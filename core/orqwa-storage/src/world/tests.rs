@@ -134,11 +134,6 @@ pub(super) fn trust() -> Trust {
 
 /// The manifest and signature of `entries`, as the development world key signs them.
 fn signature(entries: &[(String, Vec<u8>)]) -> [(String, Vec<u8>); 2] {
-    signature_claiming(entries, &[])
-}
-
-/// As [`signature`], with the manifest claiming the entries `encrypted` are.
-fn signature_claiming(entries: &[(String, Vec<u8>)], encrypted: &[&str]) -> [(String, Vec<u8>); 2] {
     let description: Value = entries
         .iter()
         .find(|(name, _)| name == DESCRIPTION)
@@ -148,14 +143,9 @@ fn signature_claiming(entries: &[(String, Vec<u8>)], encrypted: &[&str]) -> [(St
         suite: orqwa_licence::SUITE.into(),
         world: description["id"].as_str().unwrap_or_default().into(),
         version: description["version"].as_str().map(Into::into),
-        content_key: (!encrypted.is_empty()).then(|| "k".to_owned()),
         entries: entries
             .iter()
-            .map(|(name, bytes)| {
-                let claimed = encrypted.contains(&name.as_str());
-                let plain = claimed.then_some(bytes.len() as u64);
-                (name.clone(), signing::entry(bytes, claimed, plain))
-            })
+            .map(|(name, bytes)| (name.clone(), signing::entry(bytes)))
             .collect(),
     };
     let manifest = serde_json::to_vec(&manifest).unwrap();
@@ -499,12 +489,11 @@ fn archives_beyond_the_format_are_refused_before_reading_entries() {
     std::fs::remove_file(path).unwrap();
 }
 
-fn sealer(content_key: Option<&ContentKey>) -> Sealer<'_> {
+fn sealer() -> Sealer<'static> {
     static KEY: std::sync::OnceLock<KeyPair> = std::sync::OnceLock::new();
     Sealer {
         key: KEY.get_or_init(orqwa_licence::dev::world_key),
         certificate: orqwa_licence::dev::world_certificate(),
-        content_key,
     }
 }
 
@@ -524,14 +513,14 @@ fn a_folder_seals_into_a_world_that_passes_its_checks() {
     let folder = folder("folder");
     let out = folder.with_extension("oqx");
     assert_eq!(
-        seal(&folder, &out, &sealer(None), &trust()).unwrap().name,
+        seal(&folder, &out, &sealer(), &trust()).unwrap().name,
         "Test world"
     );
     assert_eq!(validate(&out, &trust()).unwrap().routes[0].id, "loop");
     // A part missing from the folder packs nothing.
     std::fs::remove_file(folder.join("routes/loop.json")).unwrap();
     std::fs::remove_file(&out).unwrap();
-    assert!(seal(&folder, &out, &sealer(None), &trust()).is_err());
+    assert!(seal(&folder, &out, &sealer(), &trust()).is_err());
     assert!(!out.exists() && !out.with_extension("oqx.part").exists());
     std::fs::remove_dir_all(folder).unwrap();
 }
@@ -586,77 +575,6 @@ fn a_part_changed_after_signing_is_refused() {
     let path = unsigned_archive(&all);
     let error = validate(&path, &trust()).unwrap_err().to_string();
     assert!(error.contains("not covered by the signature"), "{error}");
-    std::fs::remove_file(path).unwrap();
-}
-
-#[test]
-fn a_sold_world_lists_before_activation_and_opens_with_its_key() {
-    let folder = folder("sold");
-    let out = folder.with_extension("oqx");
-    let key = ContentKey::new("test-1", [5; 32]);
-    seal(&folder, &out, &sealer(Some(&key)), &trust()).unwrap();
-    assert_eq!(read_description(&out, &trust()).unwrap().name, "Test world");
-
-    let mut world = WorldFile::open(&out, &trust()).unwrap();
-    assert!(world.locked());
-    assert_eq!(world.content_key(), Some("test-1"));
-    assert_eq!(world.route("loop").unwrap().points.len(), 30);
-    assert!(world.image("preview.png").is_ok());
-    assert!(matches!(
-        world.glb("sections/0/lod0.glb"),
-        Err(WorldError::Locked)
-    ));
-    assert!(matches!(
-        world.instances("sections/0/instances.bin"),
-        Err(WorldError::Locked)
-    ));
-
-    assert!(world.unlock(ContentKey::new("other", [5; 32])).is_err());
-    assert!(world.locked());
-    world.unlock(key).unwrap();
-    assert!(!world.locked());
-    assert_eq!(
-        world.glb("sections/0/lod0.glb").unwrap(),
-        std::fs::read(folder.join("sections/0/lod0.glb")).unwrap()
-    );
-    assert_eq!(
-        world.instances("sections/0/instances.bin").unwrap()[0].count(),
-        3
-    );
-
-    // The right id with the wrong secret decrypts nothing.
-    let mut wrong = WorldFile::open(&out, &trust()).unwrap();
-    wrong.unlock(ContentKey::new("test-1", [6; 32])).unwrap();
-    assert!(wrong.glb("sections/0/lod0.glb").is_err());
-
-    // No part of the plain geometry is in the file.
-    let sealed = std::fs::read(&out).unwrap();
-    let plain = std::fs::read(folder.join("sections/0/lod0.glb")).unwrap();
-    assert!(
-        !sealed
-            .windows(16)
-            .any(|w| plain.windows(16).any(|p| p == w))
-    );
-    std::fs::remove_file(out).unwrap();
-    std::fs::remove_dir_all(folder).unwrap();
-}
-
-#[test]
-fn what_the_library_needs_is_never_encrypted() {
-    for name in ["routes/loop.json", "preview.png"] {
-        let mut all = signature_claiming(&entries(), &[name]).to_vec();
-        all.extend(entries());
-        let path = unsigned_archive(&all);
-        let error = validate(&path, &trust()).unwrap_err().to_string();
-        assert!(error.contains("may be encrypted"), "{name}: {error}");
-        assert!(WorldFile::open(&path, &trust()).is_err(), "{name}");
-        std::fs::remove_file(path).unwrap();
-    }
-    // world.json must match its signature as it is.
-    let mut all = signature_claiming(&entries(), &[DESCRIPTION]).to_vec();
-    all.extend(entries());
-    let path = unsigned_archive(&all);
-    assert!(read_description(&path, &trust()).is_err());
     std::fs::remove_file(path).unwrap();
 }
 

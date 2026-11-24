@@ -2042,10 +2042,6 @@ dependencies = [
  "orqwa-workouts",
  "orqwa-world",
  "png",
- "reqwest",
- "rustls",
- "rustls-platform-verifier",
- "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
@@ -2206,7 +2202,6 @@ name = "orqwa-storage"
 version = "0.6.5"
 dependencies = [
  "embedded-io-adapters",
- "flate2",
  "orqwa-domain",
  "orqwa-licence",
  "orqwa-world",

@@ -57,8 +57,6 @@ var _delete_button: Button = Button.new()
 var _confirm_delete: ConfirmationDialog = ConfirmationDialog.new()
 ## A world's route (R282): its world, publisher and licence.
 var _world: Label = Label.new()
-## A sold world (R293): activate it here, or release this device.
-var _licence: WorldLicence = WorldLicence.new()
 var _edit_dialog: CourseEditDialog = CourseEditDialog.new()
 ## Courses with a video are ridden along it or in 3D, as chosen when riding (#44).
 var _view_dialog: AcceptDialog = AcceptDialog.new()
@@ -70,8 +68,6 @@ var _estimated_flat_descents: bool = false
 func bind(orqwa: OrqwaApp) -> void:
 	_orqwa = orqwa
 	_options.bind(orqwa)
-	_licence.bind(orqwa)
-	_licence.changed.connect(_on_licence_changed)
 	_orqwa.route_loaded.connect(_on_route_loaded)
 	_orqwa.loading_progress.connect(_on_loading_progress)
 	_orqwa.world_ready.connect(_on_world_ready)
@@ -111,14 +107,6 @@ func open(course: Dictionary) -> void:
 	_ride_button.show()
 	_log.clear()
 	_ride_button.disabled = true
-	_licence.show_world(_path, world)
-	if _licence.locked():
-		# Its scenery opens only once activated here: nothing to load before.
-		_loading_route = false
-		_spinner.hide()
-		_videos_button.hide()
-		_status.text = tr("Activate this world to ride it.")
-		return
 	_loading_route = true
 	_spinner.show()
 	_status.text = tr("Loading the course") + " …"
@@ -241,7 +229,6 @@ func _init() -> void:
 	_world.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_world.add_theme_color_override("font_color", UiTheme.MUTED)
 	left.add_child(_world)
-	left.add_child(_licence)
 	# The figures beside the map, or under it in a small window (R94).
 	var overview: ReflowGrid = ReflowGrid.new()
 	overview.expand_room = MAP_ROOM
@@ -427,24 +414,12 @@ func _show_world(world: Dictionary) -> void:
 	if not publisher.is_empty():
 		parts.append(tr("By %s") % publisher)
 	parts.append(tr("Licence: %s") % world["licence"])
-	var licensee: String = world.get("licensee", "")
-	if not licensee.is_empty():
-		parts.append(tr("Licensed to %s") % licensee)
 	_world.text = " · ".join(parts)
 	var routes: PackedStringArray = world["routes"]
 	_confirm_delete.dialog_text = (
 		tr("Deleting it deletes the world %s with all its routes: %s. Your rides on them are kept.")
 		% [world_name, ", ".join(routes)]
 	)
-
-
-## Activated or released here: the course as the library now has it.
-func _on_licence_changed() -> void:
-	for course: Dictionary in _orqwa.courses():
-		if course["path"] == _path:
-			open(course)
-			break
-	course_changed.emit()
 
 
 func _rename(new_name: String) -> void:

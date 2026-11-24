@@ -26,12 +26,6 @@ pub fn world_key() -> KeyPair {
     key("world key")
 }
 
-/// The development activation key.
-#[must_use]
-pub fn activation_key() -> KeyPair {
-    key("activation key")
-}
-
 /// The development root's certificate for [`world_key`].
 ///
 /// # Panics
@@ -43,21 +37,6 @@ pub fn world_certificate() -> Signed {
         world_key().public(),
         Purpose::World,
         "development world key",
-    )
-    .expect("a certificate serializes")
-}
-
-/// The development root's certificate for [`activation_key`].
-///
-/// # Panics
-/// Never: a certificate always serializes.
-#[must_use]
-pub fn activation_certificate() -> Signed {
-    certify(
-        &root(),
-        activation_key().public(),
-        Purpose::Activation,
-        "development activation key",
     )
     .expect("a certificate serializes")
 }

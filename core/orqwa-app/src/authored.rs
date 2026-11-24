@@ -14,7 +14,6 @@ use orqwa_storage::world::{self, DrivesOn, InstanceGroup, WorldFile};
 use tracing::warn;
 
 use crate::CourseEntry;
-use crate::licensing::Licensing;
 
 pub mod copies;
 pub mod cutout;
@@ -75,12 +74,6 @@ pub struct WorldInfo {
     pub licence: String,
     /// The names of all its routes, deleted with it.
     pub routes: Vec<String>,
-    /// The world's id, which activations name.
-    pub id: String,
-    /// Whether it is sold and not activated on this device (R293).
-    pub locked: bool,
-    /// Who bought it, if it is activated on this device.
-    pub licensee: Option<String>,
 }
 
 /// A world's route opened for riding.
@@ -92,8 +85,6 @@ pub struct Authored {
     pub route: String,
     /// The road's width at each of the route's points, metres.
     pub widths: Vec<f64>,
-    /// Who bought it, if it is sold and activated on this device (R293).
-    pub licensee: Option<String>,
     /// Parts of the world read for the scene, until it takes them.
     parts: Mutex<HashMap<String, Result<Part, String>>>,
     /// Parts asked for and not taken yet.
@@ -156,14 +147,19 @@ pub type Opened = (Route, Vec<Option<bool>>, Authored, String);
 /// What the library has read of each world file: its modification time, size and routes.
 type Read = HashMap<PathBuf, (SystemTime, u64, Vec<CourseEntry>)>;
 
-/// Opens the route `which` of a world file, unlocked if it is activated on this device. A
-/// locked world opens too: its routes can be read, its scenery cannot ([`WorldFile::locked`]).
+/// The roots and withdrawals world files are checked against: those built into this ORQWA
+/// (ADR 0043).
+#[must_use]
+pub fn trust() -> world::Trust {
+    world::Trust::builtin()
+}
+
+/// Opens the route `which` of a world file for riding.
 ///
 /// # Errors
 /// A readable message if the file or its route cannot be read.
-pub fn open(which: &WorldRoute, licensing: &Licensing) -> Result<Opened, String> {
-    let mut file = WorldFile::open(&which.file, &licensing.trust()).map_err(|e| e.to_string())?;
-    let licensee = licensing.unlock(&mut file);
+pub fn open(which: &WorldRoute) -> Result<Opened, String> {
+    let file = WorldFile::open(&which.file, &trust()).map_err(|e| e.to_string())?;
     let (route, widths, name) = route_of(&file, &which.route)?;
     let left = file.description().drives_on == DrivesOn::Left;
     let driving_left = vec![Some(left); route.points().len()];
@@ -174,7 +170,6 @@ pub fn open(which: &WorldRoute, licensing: &Licensing) -> Result<Opened, String>
             file,
             route: which.route.clone(),
             widths,
-            licensee,
             parts: Mutex::new(HashMap::new()),
             asked: Mutex::new(HashSet::new()),
         },
@@ -253,14 +248,9 @@ pub struct Library {
 }
 
 impl Library {
-    /// Forgets what was read, as after activating or releasing a world on this device.
-    pub fn forget(&self) {
-        lock(&self.read).clear();
-    }
-
     /// The routes of the world files in `dir`. Unreadable files are skipped.
     #[must_use]
-    pub fn entries(&self, dir: &Path, licensing: &Licensing) -> Vec<CourseEntry> {
+    pub fn entries(&self, dir: &Path) -> Vec<CourseEntry> {
         let Ok(listing) = std::fs::read_dir(dir) else {
             return Vec::new();
         };
@@ -285,7 +275,7 @@ impl Library {
                 entries.extend(known.iter().cloned());
                 continue;
             }
-            match routes_of(&path, licensing) {
+            match routes_of(&path) {
                 Ok(known) => {
                     entries.extend(known.iter().cloned());
                     read.insert(path, (version.0, version.1, known));
@@ -299,9 +289,8 @@ impl Library {
 }
 
 /// Each route of the world file at `path`, as the library lists it.
-fn routes_of(path: &Path, licensing: &Licensing) -> Result<Vec<CourseEntry>, String> {
-    let mut file = WorldFile::open(path, &licensing.trust()).map_err(|e| e.to_string())?;
-    let licensee = licensing.unlock(&mut file);
+fn routes_of(path: &Path) -> Result<Vec<CourseEntry>, String> {
+    let file = WorldFile::open(path, &trust()).map_err(|e| e.to_string())?;
     let description = file.description();
     let info = WorldInfo {
         world: description.name.clone(),
@@ -309,9 +298,6 @@ fn routes_of(path: &Path, licensing: &Licensing) -> Result<Vec<CourseEntry>, Str
         publisher: description.publisher.clone(),
         licence: description.licence.clone(),
         routes: description.routes.iter().map(|r| r.name.clone()).collect(),
-        id: description.id.clone(),
-        locked: file.locked(),
-        licensee,
     };
     description
         .routes
@@ -365,8 +351,8 @@ fn manifest(
 
 /// The picture of the world file at `path`, if it has one.
 #[must_use]
-pub fn preview(path: &Path, trust: &world::Trust) -> Option<Vec<u8>> {
-    let file = WorldFile::open(path, trust).ok()?;
+pub fn preview(path: &Path) -> Option<Vec<u8>> {
+    let file = WorldFile::open(path, &trust()).ok()?;
     let name = file.description().preview.clone()?;
     file.image(&name).ok()
 }
@@ -377,7 +363,8 @@ pub fn preview(path: &Path, trust: &world::Trust) -> Option<Vec<u8>> {
 ///
 /// # Errors
 /// A readable message if the file breaks the format or cannot be copied.
-pub fn import(from: &Path, dir: &Path, trust: &world::Trust) -> Result<PathBuf, String> {
+pub fn import(from: &Path, dir: &Path) -> Result<PathBuf, String> {
+    let trust = &trust();
     let description = world::read_description(from, trust).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let existing = std::fs::read_dir(dir)

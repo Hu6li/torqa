@@ -1,6 +1,6 @@
-//! Which keys ORQWA trusts. Roots are built in; a root certifies working keys (one that seals
-//! worlds, one that signs activations), so those can be replaced without an update. A
-//! root-signed, numbered list withdraws keys and world versions.
+//! Which keys ORQWA trusts. Roots are built in; a root certifies the working keys that seal
+//! worlds, so those can be replaced without an update. Root-signed lists withdraw keys and
+//! world versions.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -8,14 +8,13 @@ use serde::{Deserialize, Serialize};
 use crate::LicenceError;
 use crate::keys::{Context, KeyId, KeyPair, PublicKey, Signature};
 
-/// What a working key may sign.
+/// What a working key may sign: named in every certificate, so a key certified for something
+/// else later never passes for a world key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Purpose {
     /// Seals world files.
     World,
-    /// Signs activations on the activation server.
-    Activation,
 }
 
 /// A root's statement that a key may sign for a purpose.
@@ -276,10 +275,6 @@ mod tests {
             trust.certificate(&signed, Purpose::World).unwrap().key,
             *key.public()
         );
-        assert!(matches!(
-            trust.certificate(&signed, Purpose::Activation),
-            Err(LicenceError::WrongPurpose(_))
-        ));
     }
 
     #[test]
@@ -298,8 +293,8 @@ mod tests {
     fn a_changed_certificate_is_refused() {
         let root = KeyPair::generate().unwrap();
         let key = KeyPair::generate().unwrap();
-        let mut signed = certify(&root, key.public(), Purpose::Activation, "server").unwrap();
-        signed.body = signed.body.replace("activation", "world");
+        let mut signed = certify(&root, key.public(), Purpose::World, "world key").unwrap();
+        signed.body = signed.body.replace("world key", "other key");
         assert!(matches!(
             trust(&root).certificate(&signed, Purpose::World),
             Err(LicenceError::BadSignature)

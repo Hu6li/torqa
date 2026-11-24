@@ -116,19 +116,6 @@ public class OrqwaAndroid extends GodotPlugin {
     }
 
     /**
-     * Android's id for this device and app (`ANDROID_ID`), which activations of sold worlds are
-     * bound to (ADR 0043). It stays on the device; null where Android gives none.
-     */
-    @UsedByGodot
-    public String machineId() {
-        Activity activity = getActivity();
-        return activity == null
-                ? null
-                : Settings.Secure.getString(
-                        activity.getContentResolver(), Settings.Secure.ANDROID_ID);
-    }
-
-    /**
      * The display name of a picked file, asked of its provider. Some pickers answer a
      * `content://` address ending in a document id (`msf:…`), which names nothing, while the
      * provider still knows the file's own name. Null where Android has none, and the address's

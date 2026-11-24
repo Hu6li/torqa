@@ -48,12 +48,6 @@ func _ready() -> void:
 	_failures.offset_top = -24
 	_failures.offset_bottom = -24
 	_orqwa.failure_reported.connect(_failures.report)
-	if Engine.has_singleton(ANDROID):
-		# Activations of sold worlds are bound to it; Rust cannot ask Android itself.
-		var machine: Variant = Engine.get_singleton(ANDROID).call(&"machineId")
-		if machine is String:
-			var id: String = machine
-			_orqwa.set_machine_id(id)
 	add_child(_video)
 	move_child(_video, _world.get_index() + 1)
 	_world.bind(_orqwa)

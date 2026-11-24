@@ -3,8 +3,8 @@
 The specification of world files: complete worlds an author builds outside ORQWA and riders
 ride as they are ([ADR 0042](adr/0042-world-files.md), R282–R285). It is written for authors
 and for tools that write world files. ORQWA refuses a file that breaks a rule below and says
-which rule. ORQWA opens only files the maintainers signed, and sold worlds are encrypted and
-activated per device ([ADR 0043](adr/0043-signed-licensed-worlds.md), R292–R294).
+which rule. ORQWA opens only files the maintainers signed; sold worlds are downloads under
+their own licence ([ADR 0043](adr/0043-signed-licensed-worlds.md), R292–R294).
 
 ## The file
 
@@ -285,7 +285,7 @@ lays up to eight tiling detail layers over the base colour near the camera:
 - List it in `extensionsUsed`, not `extensionsRequired`: viewers that do not know it show the
   base colour.
 
-## Signature and encryption
+## Signature
 
 Every world file is signed by a maintainers' world key; ORQWA refuses any other
 ([ADR 0043](adr/0043-signed-licensed-worlds.md)).
@@ -295,40 +295,29 @@ Every world file is signed by a maintainers' world key; ORQWA refuses any other
   "suite": "orqwa-1",
   "world": "6f1c1d84-6a1e-4d55-9a53-0d9e2f1f7a10",
   "version": "1.0",
-  "content_key": "k-2026-11",
   "entries": {
-    "world.json": { "size": 4211, "sha512": "…", "encrypted": false },
-    "sections/0012/lod0.glb": { "size": 18874432, "sha512": "…", "encrypted": true, "plain_size": 18872110 }
+    "world.json": { "size": 4211, "sha512": "…" },
+    "sections/0012/lod0.glb": { "size": 18874432, "sha512": "…" }
   }
 }
 ```
 
 - `manifest.json` lists **every** entry except itself and `signature.json`. `size` and
   `sha512` (hex) are those of the entry's data as the archive gives it out, after the archive's
-  own inflating: the encrypted bytes, for an encrypted entry. `plain_size` is the part's size
-  once decrypted and inflated. `content_key` names the key that
-  encrypted the entries, and is left out when nothing is encrypted.
+  own inflating. A part whose size differs from the signed one is refused before it is read.
 - `signature.json` holds the world key's certificate, signed by one of ORQWA's roots, and an
   Ed25519 and an ML-DSA-65 signature over the exact bytes of `manifest.json`. Both must hold.
-- `world.json`, `preview.png` and `routes/*` are never encrypted. Any other entry may be.
-- An encrypted entry is **stored** in the archive: encrypted bytes do not compress, so the part
-  is deflated (raw DEFLATE) first and then encrypted. Videos (a later stage) are not deflated.
-- The encryption is AES-256-GCM in chunks of 64 KiB of plain text: an 8-byte random
-  prefix, then each chunk sealed with the nonce of the prefix and its 32-bit number, with a
-  flag for the last chunk as associated data. Its key is HKDF-SHA-512 from the content key,
-  with the entry's name as information.
-- ORQWA opens encrypted entries only on a device activated for the world (R293).
+- Nothing is encrypted. A sold world is a download under its own licence (`licence` in
+  `world.json`), usable on all of the buyer's devices.
 
 ## Checking a file
 
 `orqwa-cli world-check <file.oqx>` checks a file as importing it does and shows what it holds,
-who signed it and whether it is encrypted, for tools that write world files.
+and who signed it, for tools that write world files.
 
 `orqwa-cli world-seal <folder> <file.oqx> --key <world key> --certificate <certificate>`
 streams a folder holding `world.json` and the parts it names into a world file, signs it and
-checks it; with `--content-key <file>` it encrypts every part that may be encrypted. Images
-are stored; glTF, routes and `instances` files are deflated, and encrypted parts are deflated
-before they are encrypted. `--dev` seals with the development key instead, which only
+checks it. Images are stored; glTF, routes and `instances` files are deflated. `--dev` seals with the development key instead, which only
 development builds trust (`--features dev-keys`; they never compile without debug
 assertions). `--trust <root.pub.json>` also trusts a root not yet built into ORQWA.
 
@@ -338,10 +327,9 @@ lists what riders use:
 
 | Command | |
 |---|---|
-| `key-new <file>` | A new key, encrypted, with its public half in `<file>.pub.json`. Roots, world keys and activation keys are all made this way. |
-| `key-certify --root <root> --key <public> --purpose world\|activation --name <name> <out>` | A root's certificate for a working key. A new world key needs no ORQWA update. |
+| `key-new <file>` | A new key, encrypted, with its public half in `<file>.pub.json`. Roots and world keys are both made this way. |
+| `key-certify --root <root> --key <public> --name <name> <out>` | A root's certificate for a world key. A new world key needs no ORQWA update. |
 | `revocation-sign --root <root> <list> <out>` | A root-signed list of withdrawn keys and worlds, `{"sequence", "keys", "worlds"}`. |
-| `content-key-new <id> <out>` | A world's content key, encrypted with the same password. Secret; it goes to the activation server. |
 
 Keys and certificates are never overwritten. A root's public key is built into ORQWA by adding
 its `.pub.json` to `RELEASE_ROOTS` in `orqwa-licence`.
@@ -350,8 +338,6 @@ its `.pub.json` to `RELEASE_ROOTS` in `orqwa-licence`.
 
 - Importing checks the signature and the whole file against this specification and copies it
   into `worlds/` in the data directory. Each route is a ride in the library.
-- An encrypted world is listed but locked until the rider activates it with a licence key. The
-  activation is kept on the device, outside the data directory, and is never synced.
 - Riding reads the file as it is. ORQWA builds nothing, downloads nothing and never changes or
   deletes the file; only the rider deletes it. Textures are drawn uncompressed with mipmaps
   ORQWA makes as it loads them: keep them as small as the view allows.

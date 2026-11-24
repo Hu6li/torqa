@@ -1294,21 +1294,17 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] Explicit diffuse-only materials for dry surfaces, including terrain layers (R288)
 - [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R289)
 - [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R290–R291)
-- [x] ADR 0043: signed and licensed world files (R292–R295)
-- [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, revocation lists,
-  chunked AES-256-GCM, device secret and activations; aws-lc-rs 1.19 as a direct dependency
-- [x] Signature and hashes checked in `orqwa_storage::world`; encrypted parts read once
-  unlocked; the fuzzer reaches the parsers behind the signature
-- [x] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `content-key-new`,
-  `world-seal`; the test world sealed with the development key; `dev-keys` does not compile
-  without debug assertions
-- [x] App and Godot: the activation client (TLS 1.3 with X25519MLKEM768 only), locked worlds,
-  **Activate** with a licence key, **Release this device**, the buyer named on the course page;
-  the device folder outside the data folder, Android's backup off; the usage guide and server
-  list in the wiki
-- [ ] The activation server's real address in place of `activate.orqwa.invalid` (before release)
-- [ ] Activation server (private repository) and the shop page
-- [ ] Premium video courses in world files (R295): FFmpeg reading decrypted, seekable entries
+- [x] ADR 0043: signed world files, sold as downloads without activation (R292–R295)
+- [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, withdrawal lists
+  that only add up; aws-lc-rs 1.19 as a direct dependency
+- [x] Signature, sizes and hashes checked in `orqwa_storage::world` before parts are read; the
+  fuzzer reaches the parsers behind the signature
+- [x] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `world-seal` (streaming); the
+  test world sealed with the development key; `orqwa-gd` and `orqwa-cli` refuse dev keys in
+  release builds, which name them beside their version otherwise; tags need a release root
+- [ ] The maintainers' roots made offline and built in (`RELEASE_ROOTS`) before a release
+- [ ] The shop page: paid worlds as downloads under their licence
+- [ ] Premium video courses in world files (R295): FFmpeg reading stored, seekable entries
 - [ ] Demo world (ADR 0043): the openly licensed, signed, unencrypted Twann – Chasseral world,
   linked from the website and release pages for riders to download and import; no code in
   ORQWA. The usage guide says where to get it once it is published

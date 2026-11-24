@@ -536,9 +536,7 @@ scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli --features dev-keys -
 ```
 
 The test world is sealed with the development key ([ADR 0043](../docs/adr/0043-signed-licensed-worlds.md)),
-which only debug and test builds trust. `core/fixtures/worlds/test-loop-paid.oqx` is a paid
-copy of it (its own id and name in `world.json`), sealed with `--content-key` and a throwaway
-key from `content-key-new`: no activation for it exists, so the app's tests see it locked.
+which only debug and test builds trust.
 
 The road is built from the route's own points, so the rider rides on it, not above or in it
 (docs/world-files.md, Routes). The unpacked world in `worlds/build/` is not committed.

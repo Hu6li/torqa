@@ -620,7 +620,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 scripts/release/version.py --tag "$GITHUB_REF_NAME"
-      # Worlds open only with the maintainers' roots, and activate only with the real server.
+      # Worlds open only with the maintainers' roots built in.
       - run: python3 scripts/release/licensing.py
 
   release:

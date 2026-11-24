@@ -27,14 +27,11 @@ pub struct Manifest {
     /// The world's version, as in `world.json`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    /// The content key's id, if any entry is encrypted.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub content_key: Option<String>,
     /// Every entry but the manifest and the signature.
     pub entries: BTreeMap<String, Entry>,
 }
 
-/// One entry of the archive, as the archive hands it out (inflated, still encrypted).
+/// One entry of the archive, as the archive hands it out (inflated).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Entry {
@@ -42,11 +39,6 @@ pub struct Entry {
     pub size: u64,
     /// SHA-512, hex.
     pub sha512: String,
-    /// Whether the bytes are encrypted ([`crate::stream`]).
-    pub encrypted: bool,
-    /// For an encrypted entry, its size decrypted and inflated.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub plain_size: Option<u64>,
 }
 
 impl Entry {
@@ -116,11 +108,6 @@ pub fn verify(manifest: &[u8], signature: &[u8], trust: &Trust) -> Result<Verifi
     {
         return Err(LicenceError::WorldWithdrawn);
     }
-    if manifest.content_key.is_none() && manifest.entries.values().any(|e| e.encrypted) {
-        return Err(LicenceError::Invalid(
-            "encrypted entries without a content key".into(),
-        ));
-    }
     Ok(Verified {
         manifest,
         signer: certificate.key.id(),
@@ -183,12 +170,10 @@ impl<W: io::Write> HashingWriter<W> {
 
     /// The [`Entry`] for what was written.
     #[must_use]
-    pub fn entry(self, encrypted: bool, plain_size: Option<u64>) -> Entry {
+    pub fn entry(self) -> Entry {
         Entry {
             size: self.written,
             sha512: hex(self.context.finish().as_ref()),
-            encrypted,
-            plain_size,
         }
     }
 }
@@ -208,13 +193,11 @@ impl<W: io::Write> io::Write for HashingWriter<W> {
 
 /// An [`Entry`] for these bytes.
 #[must_use]
-pub fn entry(bytes: &[u8], encrypted: bool, plain_size: Option<u64>) -> Entry {
+pub fn entry(bytes: &[u8]) -> Entry {
     let digest = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA512, bytes);
     Entry {
         size: bytes.len() as u64,
         sha512: hex(digest.as_ref()),
-        encrypted,
-        plain_size,
     }
 }
 
@@ -226,12 +209,11 @@ mod tests {
 
     fn manifest() -> Vec<u8> {
         let mut entries = BTreeMap::new();
-        entries.insert("world.json".to_owned(), entry(b"{}", false, None));
+        entries.insert("world.json".to_owned(), entry(b"{}"));
         let manifest = Manifest {
             suite: SUITE.into(),
             world: "w".into(),
             version: Some("1".into()),
-            content_key: None,
             entries,
         };
         serde_json::to_vec_pretty(&manifest).unwrap()
@@ -273,21 +255,6 @@ mod tests {
     }
 
     #[test]
-    fn the_activation_key_cannot_seal_worlds() {
-        let bytes = manifest();
-        let signature = sign(
-            &bytes,
-            &dev::activation_key(),
-            dev::activation_certificate(),
-        )
-        .unwrap();
-        assert!(matches!(
-            verify(&bytes, &signature, &Trust::builtin()),
-            Err(LicenceError::WrongPurpose(_))
-        ));
-    }
-
-    #[test]
     fn a_withdrawn_world_or_key_is_refused() {
         let bytes = manifest();
         let signature = sign(&bytes, &dev::world_key(), dev::world_certificate()).unwrap();
@@ -318,13 +285,13 @@ mod tests {
     #[test]
     fn hashing_covers_every_byte_read() {
         let data = vec![5u8; 200_000];
-        let expected = entry(&data, false, None);
+        let expected = entry(&data);
         let mut reader = Hashing::new(&data[..]);
         let mut first = [0; 10];
         reader.read_exact(&mut first).unwrap();
         let (digest, size) = reader.finish().unwrap();
         assert!(expected.matches(&digest, size));
         assert!(!expected.matches(&digest, size - 1));
-        assert!(!entry(&data[1..], false, None).matches(&digest, size));
+        assert!(!entry(&data[1..]).matches(&digest, size));
     }
 }

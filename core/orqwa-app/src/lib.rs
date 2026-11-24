@@ -23,7 +23,6 @@ mod import;
 mod kept;
 mod leaving;
 pub mod library;
-pub mod licensing;
 pub mod media;
 pub mod memory;
 pub mod moments;
@@ -393,9 +392,6 @@ pub enum AppEvent {
     CourseAdded(PathBuf),
     /// Courses in the library learned their countries (#230).
     CoursesChanged,
-    /// The sold world of the course at the path was activated on this device (true) or
-    /// released from it (false) (R293).
-    WorldLicence(PathBuf, bool),
     /// Something worth telling the rider of happened on the ride (R124).
     Moment(moments::Moment),
     /// A shifter's button asked for a ride control (#139), during a ride.
@@ -562,38 +558,7 @@ enum JobResult {
     /// The countries of the course at the path, prepared at the given time, were found
     /// (#230); `None` once the lookup is over.
     Countries(Option<(PathBuf, u64, Vec<CourseCountry>)>),
-    /// A world was activated (true) or released (false) for the course at the path (R293).
-    WorldLicence(PathBuf, bool),
     Failed(Failure),
-}
-
-/// What to tell the rider when activating (or releasing) the world `name` failed (R293).
-fn licence_failure(error: &licensing::LicensingError, activating: bool, name: &str) -> Failure {
-    use licensing::LicensingError as E;
-    use orqwa_licence::protocol::Refusal as R;
-    let kind = match error {
-        E::Unreachable(_) => {
-            let host = licensing::SERVER.trim_start_matches("https://");
-            return Failure::new(Kind::Unreachable, error).arg(host);
-        }
-        E::Refused(R::Licence) => Kind::LicenceRefused,
-        E::Refused(R::DeviceLimit) => Kind::DeviceLimit,
-        E::Refused(R::OtherDevice) => Kind::OtherDevice,
-        E::Refused(R::TooMany) => Kind::TooManyAttempts,
-        E::Refused(R::ReleaseLimit) => Kind::ReleaseLimit,
-        E::InDataFolder(dir) => {
-            return Failure::new(Kind::DeviceFolder, error).arg(dir.display());
-        }
-        E::Licence(orqwa_licence::LicenceError::NoMachine) => Kind::NoMachineId,
-        _ if activating => Kind::ActivateWorld,
-        _ => Kind::ReleaseWorld,
-    };
-    let failure = Failure::new(kind, error);
-    if matches!(kind, Kind::ActivateWorld | Kind::ReleaseWorld) {
-        failure.arg(name)
-    } else {
-        failure
-    }
 }
 
 /// Forwards load progress to the frame loop, at most once per percent per stage.
@@ -897,8 +862,6 @@ pub struct App {
     authored: Option<Arc<authored::Authored>>,
     /// The world files in the library, read once per version.
     worlds: authored::Library,
-    /// Which sold worlds this device may open (R293).
-    licensing: licensing::Licensing,
     offline: bool,
     /// Name and GPX of the loaded route, for saving it as a course.
     loaded: Option<(String, String)>,
@@ -1017,7 +980,6 @@ impl App {
             driving_left: Vec::new(),
             authored: None,
             worlds: authored::Library::default(),
-            licensing: licensing::Licensing::new(paths::device_dir(), &data_dir),
             offline: false,
             loaded: None,
             used: UsedFiles::default(),
@@ -1370,22 +1332,11 @@ impl App {
         self.world_plan = WorldPlan::OnRequest(None);
         self.course = Some(path.clone());
         let tx = self.jobs_tx.clone();
-        let licensing = self.licensing.clone();
         self.spawn_load(load, async move {
-            let opened = tokio::task::spawn_blocking(move || authored::open(&which, &licensing))
+            let opened = tokio::task::spawn_blocking(move || authored::open(&which))
                 .await
                 .map_err(|e| Failure::new(Kind::PreparationStopped, e))
-                .and_then(|r| r.map_err(|e| Failure::new(Kind::OpenFile, e).arg(path.display())))
-                .and_then(|opened| {
-                    if opened.2.file.locked() {
-                        Err(Failure::new(
-                            Kind::WorldLocked,
-                            "not activated on this device",
-                        ))
-                    } else {
-                        Ok(opened)
-                    }
-                });
+                .and_then(|r| r.map_err(|e| Failure::new(Kind::OpenFile, e).arg(path.display())));
             let _ = tx.send(JobResult::Route(
                 load,
                 opened.map(|(route, driving_left, world, name)| {
@@ -2009,12 +1960,12 @@ impl App {
             self.naming = None;
             let worlds = self.worlds_dir();
             let tx = self.jobs_tx.clone();
-            let trust = self.licensing.trust();
             self.runtime.spawn_blocking(move || {
-                let result = authored::import(&path, &worlds, &trust)
+                let result = authored::import(&path, &worlds)
                     .and_then(|file| {
-                        let description = orqwa_storage::world::read_description(&file, &trust)
-                            .map_err(|e| e.to_string())?;
+                        let description =
+                            orqwa_storage::world::read_description(&file, &authored::trust())
+                                .map_err(|e| e.to_string())?;
                         let first = description.routes.first().map(|r| r.id.clone());
                         Ok(first.map_or(file.clone(), |route| {
                             authored::WorldRoute { file, route }.path()
@@ -2052,67 +2003,6 @@ impl App {
         });
     }
 
-    /// Activates the sold world of the course at `path` on this device with the licence key
-    /// from the purchase (R293). [`AppEvent::WorldLicence`] follows, or an error.
-    pub fn activate_world(&mut self, path: &Path, licence_key: String) {
-        self.change_licence(path, Some(licence_key));
-    }
-
-    /// Releases this device from every paid world on it, freeing its slot in each licence
-    /// (R293); asked from the course at `path`. [`AppEvent::WorldLicence`] follows, or an error.
-    pub fn release_world(&mut self, path: &Path) {
-        self.change_licence(path, None);
-    }
-
-    /// The operating system's id for this device, where Rust cannot read it (Android). The
-    /// library is read again: worlds listed before it was known showed as locked.
-    pub fn set_machine_id(&self, id: Vec<u8>) {
-        self.licensing.set_machine_id(id);
-        self.worlds.forget();
-    }
-
-    fn change_licence(&mut self, path: &Path, licence_key: Option<String>) {
-        let Some(which) = authored::WorldRoute::parse(path) else {
-            let failure = Failure::new(Kind::OpenFile, "not a world's route").arg(path.display());
-            let _ = self.jobs_tx.send(JobResult::Failed(failure));
-            return;
-        };
-        let course = path.to_owned();
-        let licensing = self.licensing.clone();
-        let tx = self.jobs_tx.clone();
-        self.runtime.spawn(async move {
-            let trust = licensing.trust();
-            let file = which.file.clone();
-            let description = tokio::task::spawn_blocking(move || {
-                orqwa_storage::world::read_description(&file, &trust)
-            })
-            .await;
-            let description = match description {
-                Ok(Ok(description)) => description,
-                Ok(Err(e)) => {
-                    let failure = Failure::new(Kind::OpenFile, e).arg(which.file.display());
-                    let _ = tx.send(JobResult::Failed(failure));
-                    return;
-                }
-                Err(e) => {
-                    let _ = tx.send(JobResult::Failed(Failure::new(Kind::Unexpected, e)));
-                    return;
-                }
-            };
-            let activating = licence_key.is_some();
-            let done = match licence_key {
-                Some(key) => licensing.activate(&description.id, &key).await.map(drop),
-                None => licensing.release().await,
-            };
-            let _ = tx.send(match done {
-                Ok(()) => JobResult::WorldLicence(course, activating),
-                Err(error) => {
-                    JobResult::Failed(licence_failure(&error, activating, &description.name))
-                }
-            });
-        });
-    }
-
     /// The courses in the library, by name. Unreadable files are skipped.
     #[must_use]
     pub fn courses(&self) -> Vec<CourseEntry> {
@@ -2134,7 +2024,7 @@ impl App {
                 }
             })
             .collect();
-        courses.extend(self.worlds.entries(&self.worlds_dir(), &self.licensing));
+        courses.extend(self.worlds.entries(&self.worlds_dir()));
         courses.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
         courses
     }
@@ -2324,10 +2214,10 @@ impl App {
     /// The map picture of the course at `path` (#192), the PNG the app drew when the course
     /// was prepared; `None` without one.
     #[must_use]
-    pub fn course_preview(&self, path: &Path) -> Option<Vec<u8>> {
+    pub fn course_preview(path: &Path) -> Option<Vec<u8>> {
         match authored::WorldRoute::parse(path) {
             // A world's picture is its author's (R282).
-            Some(which) => authored::preview(&which.file, &self.licensing.trust()),
+            Some(which) => authored::preview(&which.file),
             None => course::preview(path),
         }
     }
@@ -2386,12 +2276,9 @@ impl App {
                 .and_then(|xml| orqwa_video::incyclist::parse(&xml).ok())
                 .map(|route| route.title),
             "oqc" => course::read_manifest(path).ok().map(|m| m.name),
-            "oqx" => orqwa_storage::world::read_description(
-                path,
-                &orqwa_storage::world::Trust::builtin(),
-            )
-            .ok()
-            .map(|d| d.name),
+            "oqx" => orqwa_storage::world::read_description(path, &authored::trust())
+                .ok()
+                .map(|d| d.name),
             "rlv" => video::tacx_course_name(path),
             _ => None,
         };
@@ -4894,11 +4781,6 @@ impl App {
                     events.push(AppEvent::Error(message));
                 }
                 JobResult::CourseUpdated => events.push(AppEvent::CoursesChanged),
-                JobResult::WorldLicence(path, activated) => {
-                    self.worlds.forget();
-                    events.push(AppEvent::WorldLicence(path, activated));
-                    events.push(AppEvent::CoursesChanged);
-                }
                 JobResult::VideoKept(course, kept) => {
                     if let Err(e) = refer_to_kept_video(&course, &kept) {
                         events.push(AppEvent::Error(Failure::new(Kind::SaveVideo, e)));

@@ -14,7 +14,6 @@ fuzzing = []
 [dependencies]
 orqwa-domain.workspace = true
 orqwa-licence.workspace = true
-flate2.workspace = true
 orqwa-world.workspace = true
 rusqlite.workspace = true
 rustyfit.workspace = true

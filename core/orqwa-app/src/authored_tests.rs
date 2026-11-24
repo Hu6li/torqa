@@ -47,17 +47,6 @@ fn glb() -> Vec<u8> {
 
 /// A world of two routes north from 2 km east of its origin: a flat one and one climbing 4 %.
 fn world(dir: &Path, name: &str, version: &str, located: bool) -> PathBuf {
-    sealed(dir, name, version, located, None)
-}
-
-/// A world file as [`world`] makes it, encrypted with `content_key` if it is sold (R293).
-fn sealed(
-    dir: &Path,
-    name: &str,
-    version: &str,
-    located: bool,
-    content_key: Option<&orqwa_licence::stream::ContentKey>,
-) -> PathBuf {
     let folder = dir.join(format!("{name}-{version}"));
     let write = |file: &str, bytes: Vec<u8>| {
         let path = folder.join(file);
@@ -112,7 +101,6 @@ fn sealed(
     let sealer = orqwa_storage::world::Sealer {
         key: &key,
         certificate: orqwa_licence::dev::world_certificate(),
-        content_key,
     };
     orqwa_storage::world::seal(
         &folder,
@@ -192,73 +180,6 @@ fn a_world_file_is_imported_whole_and_each_route_is_a_ride() {
     app.import_course(broken);
     assert!(added(&mut app).is_err());
     assert_eq!(app.courses().len(), 2);
-    app.shutdown();
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
-fn a_sold_world_is_listed_locked_and_opens_once_activated_on_this_device() {
-    use crate::licensing::{Licensing, tests as fake};
-    let dir = temp_dir("world-sold");
-    let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
-    let (url, _) = fake::server(fake::activating);
-    app.licensing = Licensing::with_server(dir.join("device"), &dir.join("data"), &url, true);
-    app.licensing.set_machine_id(b"this machine".to_vec());
-    app.import_course(sealed(
-        &dir,
-        "Lake",
-        "1.0",
-        true,
-        Some(&fake::content_key()),
-    ));
-    let path = added(&mut app).unwrap();
-    let info = |app: &App| {
-        let courses = app.courses();
-        let course = courses.iter().find(|c| c.path == path).unwrap();
-        course.world.clone().unwrap()
-    };
-    assert!(info(&app).locked, "listed before activation, locked");
-    assert_eq!(info(&app).licensee, None);
-
-    app.open_course(path.clone());
-    let events = run_until(&mut app, |e| {
-        matches!(e, AppEvent::Error(_) | AppEvent::RouteLoaded(_))
-    });
-    assert!(matches!(
-        events.last(),
-        Some(AppEvent::Error(failure)) if failure.kind == crate::failure::Kind::WorldLocked
-    ));
-
-    app.activate_world(&path, "LICENCE-KEY".into());
-    let events = run_until(&mut app, |e| {
-        matches!(e, AppEvent::WorldLicence(..) | AppEvent::Error(_))
-    });
-    assert!(
-        matches!(events.last(), Some(AppEvent::WorldLicence(p, true)) if *p == path),
-        "{events:?}"
-    );
-    assert!(!info(&app).locked);
-    assert_eq!(info(&app).licensee.as_deref(), Some("Ada Rider"));
-    assert!(!dir.join("data").join("device").exists());
-
-    app.open_course(path.clone());
-    run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
-    let world = app.authored().unwrap();
-    assert_eq!(world.licensee.as_deref(), Some("Ada Rider"));
-    assert!(
-        world.file.glb("sections/0/lod0.glb").is_ok(),
-        "its scenery decrypts here"
-    );
-
-    app.release_world(&path);
-    let events = run_until(&mut app, |e| {
-        matches!(e, AppEvent::WorldLicence(..) | AppEvent::Error(_))
-    });
-    assert!(
-        matches!(events.last(), Some(AppEvent::WorldLicence(_, false))),
-        "{events:?}"
-    );
-    assert!(info(&app).locked);
     app.shutdown();
     std::fs::remove_dir_all(dir).unwrap();
 }

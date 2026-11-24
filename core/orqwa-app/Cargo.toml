@@ -9,7 +9,6 @@ publish.workspace = true
 
 [dependencies]
 orqwa-domain.workspace = true
-orqwa-licence.workspace = true
 orqwa-net.workspace = true
 orqwa-voice.workspace = true
 orqwa-osm.workspace = true
@@ -26,11 +25,6 @@ orqwa-workouts.workspace = true
 orqwa-video.workspace = true
 orqwa-world.workspace = true
 png.workspace = true
-reqwest.workspace = true
-rustls.workspace = true
-rustls-platform-verifier.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time", "fs", "sync"] }
 tracing.workspace = true
@@ -39,6 +33,7 @@ tracing.workspace = true
 orqwa-licence = { workspace = true, features = ["dev-keys"] }
 orqwa-net = { workspace = true, features = ["testing"] }
 orqwa-video = { workspace = true, features = ["testing"] }
+serde_json.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

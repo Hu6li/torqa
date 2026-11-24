@@ -48,72 +48,6 @@ pub fn cache_dir() -> PathBuf {
     base.join("orqwa")
 }
 
-/// This device's own folder for activating sold worlds (ADR 0043, R293): the device secret and
-/// activations. It never roams with a profile or syncs with the data folder, and lies outside
-/// the cache, which cleaners empty: losing it would cost the activations their device slots.
-/// `None` where the platform names no home for it: no temporary folder stands in.
-#[must_use]
-pub fn device_dir() -> Option<PathBuf> {
-    if cfg!(target_os = "android") {
-        return Some(android_device_dir(&std::env::temp_dir()));
-    }
-    let env = |key: &str| std::env::var_os(key).map(PathBuf::from);
-    let home = env("HOME").or_else(|| env("USERPROFILE"));
-    if cfg!(target_os = "macos") {
-        home.map(|h| h.join("Library/Application Support/org.orqwa.device"))
-    } else if cfg!(windows) {
-        // Beside the cache (`%LOCALAPPDATA%\orqwa`), not in it.
-        env("LOCALAPPDATA").map(|d| d.join("orqwa-device"))
-    } else {
-        env("XDG_STATE_HOME")
-            .or_else(|| home.map(|h| h.join(".local/state")))
-            .map(|d| d.join("orqwa"))
-    }
-}
-
-/// The device folder on Android: in the app's private `files`, beside the private data folder,
-/// where no sync app reaches.
-fn android_device_dir(app_cache: &Path) -> PathBuf {
-    let app = app_cache.parent().unwrap_or(app_cache);
-    app.join("files").join("device")
-}
-
-/// Whether `device` lies outside `data`, so syncing the data folder never carries activations.
-/// Either may not exist yet (a first start): the nearest folder that does is resolved, links and
-/// all, and the rest appended. macOS and Windows compare names regardless of case, as their
-/// file systems do.
-#[must_use]
-pub fn outside(device: &Path, data: &Path) -> bool {
-    let fold = |p: PathBuf| {
-        if cfg!(any(target_os = "macos", windows)) {
-            PathBuf::from(p.to_string_lossy().to_lowercase())
-        } else {
-            p
-        }
-    };
-    let device = fold(resolved(device));
-    let data = fold(resolved(data));
-    !device.starts_with(&data)
-}
-
-/// `path` with its nearest existing folder resolved, and what does not exist yet appended.
-fn resolved(path: &Path) -> PathBuf {
-    let mut existing = path;
-    let mut missing = Vec::new();
-    while std::fs::symlink_metadata(existing).is_err() {
-        match (existing.parent(), existing.file_name()) {
-            (Some(parent), Some(name)) => {
-                missing.push(name.to_owned());
-                existing = parent;
-            }
-            _ => return path.to_path_buf(),
-        }
-    }
-    let mut resolved = std::fs::canonicalize(existing).unwrap_or_else(|_| existing.to_path_buf());
-    resolved.extend(missing.iter().rev());
-    resolved
-}
-
 /// ORQWA's data and cache directories on Android (ADR 0024), from the app's cache directory that
 /// Android gives as the temporary one (`/data/user/0/<app>/cache`): data goes beside it into the
 /// app's own `files`, which Android never clears, unlike the cache when space runs short.
@@ -226,35 +160,6 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-
-    #[test]
-    fn the_device_folder_is_never_in_the_data_folder_or_the_cache() {
-        let device = device_dir().unwrap();
-        assert!(outside(&device, &data_dir()));
-        assert!(outside(&device, &cache_dir()));
-        let app_cache = Path::new("/data/user/0/org.orqwa.bike/cache");
-        let device = android_device_dir(app_cache);
-        assert_eq!(
-            device,
-            PathBuf::from("/data/user/0/org.orqwa.bike/files/device")
-        );
-        assert!(outside(&device, &android_dirs(app_cache).0));
-        assert!(outside(&device, &android_dirs(app_cache).1));
-        assert!(!outside(Path::new("/x/data/device"), Path::new("/x/data")));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn a_device_folder_reached_through_a_link_is_seen_inside_the_data_folder() {
-        let root = std::env::temp_dir().join(format!("orqwa-paths-link-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("data")).unwrap();
-        std::os::unix::fs::symlink(root.join("data"), root.join("link")).unwrap();
-        // Neither device folder exists yet, as on a first start.
-        assert!(!outside(&root.join("link/device"), &root.join("data")));
-        assert!(outside(&root.join("state/device"), &root.join("data")));
-        std::fs::remove_dir_all(root).unwrap();
-    }
 
     #[test]
     fn on_android_data_stays_out_of_the_cache() {

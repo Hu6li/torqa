@@ -7,8 +7,7 @@
 //!
 //! Only files the maintainers signed open (ADR 0043, R292): `manifest.json` lists every other
 //! entry with its SHA-512 and `signature.json` signs it. The signature is checked before
-//! anything else is read, and each entry against its hash whenever it is read. Encrypted parts
-//! open with the content key an activation gives ([`WorldFile::unlock`]).
+//! anything else is read, and each entry against its hash whenever it is read.
 
 mod archive;
 pub mod glb;
@@ -18,18 +17,15 @@ mod tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::{self, BufReader, Cursor, Read};
+use std::io::{self, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use flate2::Compression;
-use flate2::read::{DeflateDecoder, DeflateEncoder};
 use orqwa_licence::LicenceError;
 use orqwa_licence::keys::{KeyId, KeyPair};
 use orqwa_licence::manifest::{
     self as signing, Hashing, HashingWriter, MANIFEST, Manifest, SIGNATURE,
 };
-use orqwa_licence::stream::{self, ContentKey};
 use orqwa_licence::trust::Signed;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -91,9 +87,6 @@ pub enum WorldError {
     /// The signature, its key or the world was refused (R292, R294).
     #[error("{0}")]
     Licence(#[from] LicenceError),
-    /// An encrypted part was asked for before the world was unlocked (R293).
-    #[error("this world is locked: activate it to ride it")]
-    Locked,
 }
 
 fn invalid(message: impl Into<String>) -> WorldError {
@@ -335,12 +328,6 @@ enum Part {
 }
 
 impl Part {
-    /// Whether a sold world may encrypt it. Descriptions, routes and the preview stay readable,
-    /// so the library can list a world before it is activated.
-    fn encryptable(self) -> bool {
-        matches!(self, Self::Glb | Self::Instances | Self::Sky)
-    }
-
     fn limit(self) -> u64 {
         match self {
             Self::Glb | Self::Instances => MAX_PART_BYTES,
@@ -671,12 +658,6 @@ fn open_zip(path: &Path) -> Result<ZipArchive<BufReader<File>>, WorldError> {
     Ok(zip)
 }
 
-/// Largest encrypted entry for a part of `limit` plain bytes: deflating may grow incompressible
-/// data a little, and every 64 KiB chunk adds a 16-byte tag.
-fn sealed_limit(limit: u64) -> u64 {
-    limit + limit / 16 + 1024 * 1024
-}
-
 fn read_named(
     zip: &mut ZipArchive<BufReader<File>>,
     name: &str,
@@ -707,7 +688,6 @@ fn signed(
             suite: orqwa_licence::SUITE.to_owned(),
             world: description.id.clone(),
             version: description.version.clone(),
-            content_key: None,
             entries: BTreeMap::new(),
         };
         return Ok(SignedWorld {
@@ -730,7 +710,7 @@ fn signed(
         .manifest
         .entries
         .get(DESCRIPTION)
-        .is_some_and(|entry| !entry.encrypted && entry.matches(&digest, bytes.len() as u64))
+        .is_some_and(|entry| entry.matches(&digest, bytes.len() as u64))
     {
         return Err(invalid("world.json does not match its signature"));
     }
@@ -765,8 +745,7 @@ pub fn read_description(path: &Path, trust: &Trust) -> Result<Description, World
 
 /// Checks a whole world file against the format (R282, R292): its signature, its archive, its
 /// description and every part it names, each read to its last byte and compared with its
-/// signed hash. Encrypted parts are checked against their hash and size only; their content is
-/// checked whenever they are read unlocked. Run on a worker: it reads gigabytes.
+/// signed hash. Run on a worker: it reads gigabytes.
 ///
 /// # Errors
 /// [`WorldError`] naming the first rule the file breaks.
@@ -847,19 +826,6 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
         let parsed: Result<u64, WorldError> = (|| {
             Ok(match part {
                 None => 0,
-                Some(part) if signed_entry.is_some_and(|e| e.encrypted) => {
-                    let plain = signed_entry.and_then(|e| e.plain_size);
-                    if !part.encryptable()
-                        || plain.is_none_or(|plain| plain > part.limit())
-                        || declared > sealed_limit(part.limit())
-                        || stream::plain_len(declared).is_none()
-                    {
-                        return Err(invalid(format!(
-                            "{name}: not a part that may be encrypted so"
-                        )));
-                    }
-                    0
-                }
                 Some(part) => {
                     if declared > part.limit() {
                         return Err(invalid(format!("{name}: larger than its limit")));
@@ -890,17 +856,11 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
             return Err(changed());
         }
         let read = parsed?;
-        let encrypted = signed_entry.is_some_and(|e| e.encrypted);
-        if part == Some(Part::Instances) && !encrypted && total != read {
+        if part == Some(Part::Instances) && total != read {
             return Err(invalid(format!("{name}: bytes after its last group")));
         }
         if total != declared {
             return Err(invalid(format!("{name}: not as long as its archive says")));
-        }
-        if encrypted && entry.compression() != CompressionMethod::Stored {
-            return Err(invalid(format!(
-                "{name}: encrypted parts are stored, not deflated"
-            )));
         }
     }
     if let Some(missing) = parts.keys().find(|name| !seen.contains(**name)) {
@@ -953,8 +913,6 @@ pub struct WorldFile {
     path: PathBuf,
     description: Description,
     parts: BTreeMap<String, Known>,
-    content_key: Option<String>,
-    key: Option<ContentKey>,
     signer: KeyId,
     signer_name: String,
     zip: Mutex<ZipArchive<BufReader<File>>>,
@@ -970,7 +928,6 @@ impl std::fmt::Debug for WorldFile {
 
 impl WorldFile {
     /// Opens the world file at `path` once its signature holds, reading its description.
-    /// Encrypted parts stay locked until [`WorldFile::unlock`].
     ///
     /// # Errors
     /// As [`read_description`].
@@ -988,9 +945,6 @@ impl WorldFile {
                 .entries
                 .remove(name)
                 .ok_or_else(|| invalid(format!("{name}: not covered by the signature")))?;
-            if signed.encrypted && !part.encryptable() {
-                return Err(invalid(format!("{name}: may not be encrypted")));
-            }
             parts.insert(
                 name.to_owned(),
                 Known {
@@ -1003,8 +957,6 @@ impl WorldFile {
             path: path.to_owned(),
             description,
             parts,
-            content_key: manifest.content_key,
-            key: None,
             signer,
             signer_name,
             zip: Mutex::new(zip),
@@ -1029,44 +981,12 @@ impl WorldFile {
         (&self.signer, &self.signer_name)
     }
 
-    /// The id of the content key its encrypted parts need, if any are encrypted.
-    #[must_use]
-    pub fn content_key(&self) -> Option<&str> {
-        self.content_key.as_deref()
-    }
-
-    /// Whether encrypted parts wait for a key.
-    #[must_use]
-    pub fn locked(&self) -> bool {
-        self.content_key.is_some() && self.key.is_none()
-    }
-
-    /// Opens the encrypted parts with the key an activation gave.
-    ///
-    /// # Errors
-    /// [`WorldError::Invalid`] if the key is not the one this world names.
-    pub fn unlock(&mut self, key: ContentKey) -> Result<(), WorldError> {
-        if self.content_key.as_deref() != Some(key.id()) {
-            return Err(invalid("the activation's key is not this world's"));
-        }
-        self.key = Some(key);
-        Ok(())
-    }
-
     fn read(&self, name: &str) -> Result<Vec<u8>, WorldError> {
         let known = self
             .parts
             .get(name)
             .ok_or_else(|| invalid(format!("{name}: not named by world.json")))?;
         let signed = &known.signed;
-        if signed.encrypted && self.key.is_none() {
-            return Err(WorldError::Locked);
-        }
-        let limit = if signed.encrypted {
-            sealed_limit(known.limit)
-        } else {
-            known.limit
-        };
         let changed = || invalid(format!("{name}: does not match its signature"));
         let bytes = {
             let mut zip = self
@@ -1078,27 +998,18 @@ impl WorldFile {
             if entry.size() != signed.size {
                 return Err(changed());
             }
-            read_capped(entry, signed.size, limit).map_err(|e| prefixed(name, e))?
+            read_capped(entry, signed.size, known.limit).map_err(|e| prefixed(name, e))?
         };
         if !signed.matches(&sha512(&bytes), bytes.len() as u64) {
             return Err(changed());
         }
-        let Some(key) = self.key.as_ref().filter(|_| signed.encrypted) else {
-            return Ok(bytes);
-        };
-        let plain = signed
-            .plain_size
-            .filter(|plain| *plain <= known.limit)
-            .ok_or_else(|| invalid(format!("{name}: larger than its limit")))?;
-        let decrypted = stream::Decryptor::new(Cursor::new(&bytes), key, name, bytes.len() as u64)?;
-        read_capped(DeflateDecoder::new(decrypted), plain, known.limit)
-            .map_err(|e| prefixed(name, e))
+        Ok(bytes)
     }
 
     /// The bytes of a `.glb` the description names, checked against the format.
     ///
     /// # Errors
-    /// [`WorldError`] if it cannot be read, is locked or breaks the format.
+    /// [`WorldError`] if it cannot be read, or breaks the format.
     pub fn glb(&self, name: &str) -> Result<Vec<u8>, WorldError> {
         let bytes = self.read(name)?;
         glb::check_stream(&mut bytes.as_slice(), bytes.len() as u64)
@@ -1109,7 +1020,7 @@ impl WorldFile {
     /// The copies of assets an `instances` file places.
     ///
     /// # Errors
-    /// [`WorldError`] if it cannot be read, is locked or breaks the format.
+    /// [`WorldError`] if it cannot be read, or breaks the format.
     pub fn instances(&self, name: &str) -> Result<Vec<InstanceGroup>, WorldError> {
         let bytes = self.read(name)?;
         let (groups, read) =
@@ -1139,7 +1050,7 @@ impl WorldFile {
     /// The bytes of an image the description names: the preview or a sky panorama.
     ///
     /// # Errors
-    /// [`WorldError`] if it cannot be read, is locked or is not an image of its kind.
+    /// [`WorldError`] if it cannot be read, or is not an image of its kind.
     pub fn image(&self, name: &str) -> Result<Vec<u8>, WorldError> {
         let bytes = self.read(name)?;
         image(
@@ -1151,20 +1062,17 @@ impl WorldFile {
     }
 }
 
-/// What seals a world: a world key, a root's certificate for it, and the content key to
-/// encrypt with, if the world is sold.
+/// What seals a world: a world key and a root's certificate for it.
 #[derive(Debug)]
 pub struct Sealer<'a> {
     /// The world key.
     pub key: &'a KeyPair,
     /// A root's certificate for it.
     pub certificate: Signed,
-    /// Encrypts every part that may be encrypted.
-    pub content_key: Option<&'a ContentKey>,
 }
 
 /// Seals the folder `from` into the world file `to`: `world.json` and every part it names,
-/// under their names relative to the folder, encrypted where asked and signed, then checks the
+/// under their names relative to the folder, and signs it, then checks the
 /// result as importing would with `trust`. Written beside `to` first and moved there once
 /// checked, so a failed seal leaves nothing. For the maintainers' tools (ADR 0043).
 ///
@@ -1183,8 +1091,7 @@ pub fn seal(
     let written = (|| {
         let mut zip = ZipWriter::new(io::BufWriter::new(File::create(&partial)?));
         // Images are compressed already: deflating gains nothing. glTF geometry, floats and
-        // indices, halves and inflates in milliseconds. Encrypted bytes do not compress, so an
-        // encrypted part is deflated before it is encrypted and stored as it is.
+        // indices, halves and inflates in milliseconds.
         let stored = SimpleFileOptions::default()
             .compression_method(CompressionMethod::Stored)
             .large_file(true);
@@ -1199,36 +1106,19 @@ pub fn seal(
             std::iter::once((DESCRIPTION, None)).chain(parts.iter().map(|(n, p)| (*n, Some(*p))))
         {
             let mut input = io::BufReader::new(File::open(from.join(name))?);
-            let entry = match (sealer.content_key, part) {
-                (Some(key), Some(part)) if part.encryptable() => {
-                    zip.start_file(name, stored)?;
-                    let size = std::fs::metadata(from.join(name))?.len();
-                    let mut encryptor =
-                        stream::Encryptor::new(HashingWriter::new(&mut zip), key, name)?;
-                    io::copy(
-                        &mut DeflateEncoder::new(input, Compression::default()),
-                        &mut encryptor,
-                    )?;
-                    encryptor.finish()?.entry(true, Some(size))
-                }
-                _ => {
-                    let options = match part {
-                        Some(Part::Sky | Part::Preview) => stored,
-                        Some(Part::Glb | Part::Instances | Part::Route) | None => deflated,
-                    };
-                    zip.start_file(name, options)?;
-                    let mut hashing = HashingWriter::new(&mut zip);
-                    io::copy(&mut input, &mut hashing)?;
-                    hashing.entry(false, None)
-                }
+            let options = match part {
+                Some(Part::Sky | Part::Preview) => stored,
+                Some(Part::Glb | Part::Instances | Part::Route) | None => deflated,
             };
-            entries.insert(name.to_owned(), entry);
+            zip.start_file(name, options)?;
+            let mut hashing = HashingWriter::new(&mut zip);
+            io::copy(&mut input, &mut hashing)?;
+            entries.insert(name.to_owned(), hashing.entry());
         }
         let manifest = Manifest {
             suite: orqwa_licence::SUITE.to_owned(),
             world: description.id.clone(),
             version: description.version.clone(),
-            content_key: sealer.content_key.map(|key| key.id().to_owned()),
             entries,
         };
         let manifest = serde_json::to_vec_pretty(&manifest)

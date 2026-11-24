@@ -93,7 +93,7 @@ preview.png                the library's picture
   entry per route; deleting one deletes the world with all its routes, after naming them.
 - **Not shared from ORQWA.** Worlds are to be sold. ORQWA offers no export, and world routes
   cannot be chosen for group rides. `publisher` and `licence` say whose a world is. ORQWA opens
-  only worlds the maintainers signed, and sold worlds are encrypted and activated per device
+  only worlds the maintainers signed; sold ones are downloads under their own licence
   ([ADR 0043](0043-signed-licensed-worlds.md)).
 - **Assets of worlds are not ORQWA's assets.** R47 (assets redistributable with the GPL
   program) covers what ORQWA ships. A world file carries its own licence and attribution, which
@@ -147,6 +147,5 @@ give land and water separate footprints with matching shoreline heights. The for
 version 1; the optional metadata requires the updated viewer to switch backgrounds.
 **Amendment (2026-11-24, R292–R295, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
 gains `manifest.json` and `signature.json`. ORQWA opens only world files signed by the
-maintainers. Parts other than `world.json`, `preview.png` and the routes may be encrypted, and
-a device activated with a licence key opens them, on at most 5 devices per purchase. Stage 3's
-editor stays with the maintainers.
+maintainers. Sold worlds are downloads under their own licence, usable on all of the buyer's
+devices, with no activation. Stage 3's editor stays with the maintainers.

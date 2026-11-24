@@ -416,11 +416,6 @@ impl OrqwaApp {
     #[signal]
     fn courses_changed();
 
-    /// The sold world of the course at `path` was activated on this device (`activated`) or
-    /// released from it (R293).
-    #[signal]
-    fn world_licence_changed(path: GString, activated: bool);
-
     /// Devices used last that the reconnect at start did not find, by name.
     #[signal]
     fn remembered_missing(names: PackedStringArray);
@@ -1016,35 +1011,6 @@ impl OrqwaApp {
     fn import_course(&mut self, path: GString) {
         if let Some(app) = self.app.as_mut() {
             app.import_course(PathBuf::from(path.to_string()));
-        }
-    }
-
-    /// Activates the sold world of the course at `path` on this device with the rider's
-    /// licence key (R293); emits `world_licence_changed` or `failed`.
-    #[func]
-    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn activate_world(&mut self, path: GString, licence_key: GString) {
-        if let Some(app) = self.app.as_mut() {
-            app.activate_world(Path::new(&path.to_string()), licence_key.to_string());
-        }
-    }
-
-    /// Android's id for this device, which activations are bound to (ADR 0043).
-    #[func]
-    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn set_machine_id(&mut self, id: GString) {
-        if let Some(app) = self.app.as_ref() {
-            app.set_machine_id(id.to_string().into_bytes());
-        }
-    }
-
-    /// Releases this device from the sold world of the course at `path` (R293); emits
-    /// `world_licence_changed` or `failed`.
-    #[func]
-    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn release_world(&mut self, path: GString) {
-        if let Some(app) = self.app.as_mut() {
-            app.release_world(Path::new(&path.to_string()));
         }
     }
 
@@ -1911,9 +1877,7 @@ impl OrqwaApp {
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     #[allow(clippy::unused_self)] // a #[func] is called on the node
     fn course_preview(&self, path: GString) -> PackedByteArray {
-        self.app
-            .as_ref()
-            .and_then(|app| app.course_preview(Path::new(&path.to_string())))
+        App::course_preview(Path::new(&path.to_string()))
             .map(|png| PackedByteArray::from(png.as_slice()))
             .unwrap_or_default()
     }
@@ -4671,12 +4635,6 @@ impl OrqwaApp {
                     .emit(&GString::from(path.as_str()));
             }
             AppEvent::CoursesChanged => self.signals().courses_changed().emit(),
-            AppEvent::WorldLicence(path, activated) => {
-                let path = path.display().to_string();
-                self.signals()
-                    .world_licence_changed()
-                    .emit(&GString::from(path.as_str()), activated);
-            }
             AppEvent::Moment(moment) => self.signals().moment().emit(&moment_dict(&moment)),
             AppEvent::RememberedMissing(names) => {
                 let names: PackedStringArray =

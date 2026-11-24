@@ -275,14 +275,6 @@ msgstr ""
 msgid "A ghost rider on the road: your best time, a pacer or a recorded activity"
 msgstr ""
 
-#: app/ui/world_licence.gd
-msgid "A licence can release only a few devices a year."
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "A licence on this device has released as many devices as it may for now. Try again later, or ask the shop."
-msgstr ""
-
 #: app/scenes/devices_tab.gd
 msgid "A phone or tablet on the same Wi-Fi shifts and controls the ride"
 msgstr ""
@@ -325,14 +317,6 @@ msgstr ""
 
 #: app/scenes/profile_tab.gd
 msgid "Accounts"
-msgstr ""
-
-#: app/ui/world_licence.gd
-msgid "Activate"
-msgstr ""
-
-#: app/scenes/course_detail.gd core/orqwa-app/src/failure.rs
-msgid "Activate this world to ride it."
 msgstr ""
 
 #: core/orqwa-session/src/workout.rs
@@ -431,10 +415,6 @@ msgstr ""
 msgid "All out"
 msgstr ""
 
-#: app/ui/world_licence.gd
-msgid "All paid worlds lock on this device; each of their licences has a device free again."
-msgstr ""
-
 #: app/scenes/profile_tab.gd
 msgid "All settings"
 msgstr ""
@@ -485,10 +465,6 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "Another computer uses this device's activation. Release it there first."
 msgstr ""
 
 #: app/ui/graphics_settings.gd
@@ -1040,10 +1016,6 @@ msgid "Correcting elevations"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
-msgid "Could not activate %s."
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
 msgid "Could not check Android's available memory. Reopen ORQWA and try again."
 msgstr ""
 
@@ -1157,10 +1129,6 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Could not read the workouts planned on %s: %s"
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "Could not release this device from %s."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -1791,10 +1759,6 @@ msgstr ""
 msgid "Free ride · no workout"
 msgstr ""
 
-#: app/ui/world_licence.gd
-msgid "Frees this device in every paid world's licence; they lock here"
-msgstr ""
-
 #: app/ui/fitness_chart.gd
 msgid "Fresh"
 msgstr ""
@@ -2255,20 +2219,12 @@ msgstr ""
 msgid "Level"
 msgstr ""
 
-#: app/ui/world_licence.gd
-msgid "Licence key"
-msgstr ""
-
 #: app/scenes/course_detail.gd
 msgid "Licence: %s"
 msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Licences"
-msgstr ""
-
-#: app/scenes/course_detail.gd
-msgid "Licensed to %s"
 msgstr ""
 
 #: app/ui/ui_theme.gd
@@ -2851,10 +2807,6 @@ msgstr ""
 msgid "Pacer at your FTP"
 msgstr ""
 
-#: core/orqwa-app/src/failure.rs
-msgid "Paid worlds cannot be activated here: ORQWA's device folder %s lies in its data folder, which may sync to other devices."
-msgstr ""
-
 #: app/ui/video_align_dialog.gd
 msgid "Pair moments of the video with places on the route."
 msgstr ""
@@ -3125,18 +3077,6 @@ msgstr ""
 
 #: app/ui/course_settings.gd
 msgid "Regions"
-msgstr ""
-
-#: app/ui/world_licence.gd
-msgid "Release"
-msgstr ""
-
-#: app/ui/world_licence.gd
-msgid "Release this device"
-msgstr ""
-
-#: app/ui/world_licence.gd
-msgid "Release this device?"
 msgstr ""
 
 #: app/scenes/remote_dialog.gd core/orqwa-remote/src/lib.rs
@@ -3879,28 +3819,12 @@ msgstr ""
 msgid "This device lets no app install apps, so ORQWA cannot update itself."
 msgstr ""
 
-#: core/orqwa-app/src/failure.rs
-msgid "This device's id could not be read, so paid worlds cannot be activated on it."
-msgstr ""
-
 #: app/ui/group_join_card.gd
 msgid "This invitation is from a newer ORQWA version. Update ORQWA to join."
 msgstr ""
 
 #: app/ui/group_join_card.gd
 msgid "This invitation is from an older ORQWA version. Ask the organizer to update ORQWA and send a new invitation."
-msgstr ""
-
-#: app/ui/world_licence.gd
-msgid "This is a paid world. Enter the licence key from your purchase to ride it on this device."
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "This licence is active on all the devices it allows. Release one of them, then activate here."
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "This licence key does not unlock this world."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -3949,10 +3873,6 @@ msgstr ""
 
 #: core/orqwa-app/src/hud.rs
 msgid "To go"
-msgstr ""
-
-#: core/orqwa-app/src/failure.rs
-msgid "Too many attempts. Try again later."
 msgstr ""
 
 #: app/ui/course_settings.gd

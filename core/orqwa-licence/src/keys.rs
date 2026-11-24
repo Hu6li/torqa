@@ -26,8 +26,6 @@ pub enum Context {
     Revocations,
     /// A world key signing a world's manifest.
     Manifest,
-    /// The activation key signing an activation.
-    Activation,
 }
 
 impl Context {
@@ -36,7 +34,6 @@ impl Context {
             Self::Certificate => "certificate",
             Self::Revocations => "revocations",
             Self::Manifest => "manifest",
-            Self::Activation => "activation",
         }
     }
 
@@ -351,7 +348,7 @@ mod tests {
         );
         assert!(
             key.public()
-                .verify(Context::Activation, b"world", &signature)
+                .verify(Context::Certificate, b"world", &signature)
                 .is_err()
         );
     }

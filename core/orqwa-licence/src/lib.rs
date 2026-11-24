@@ -1,25 +1,21 @@
-//! Signed, encrypted and activated world files (ADR 0043, R292–R295).
+//! Signed world files (ADR 0043, R292–R295).
 //!
-//! ORQWA opens only world files the maintainers signed. Sold worlds are encrypted, and a device
-//! activated with a licence key opens them. Everything comes from aws-lc-rs, which ORQWA
-//! already builds for TLS:
+//! ORQWA opens only world files the maintainers signed; sold ones are bought as downloads and
+//! work on all of the buyer's own devices, with no activation and no server. Everything comes
+//! from aws-lc-rs, which ORQWA already builds for TLS:
 //!
 //! - signatures: Ed25519 **and** ML-DSA-65 over the same bytes ([`keys`]), so a signature
 //!   holds while either scheme does;
 //! - trust: root keys built into ORQWA certify working keys, which can be replaced without an
 //!   update, and a root-signed list withdraws keys and world versions ([`trust`]);
 //! - files: a signed manifest of every entry's SHA-512 ([`manifest`]);
-//! - encryption: AES-256-GCM in chunks, seekable ([`stream`]);
-//! - activation: a world's content key sealed for one device ([`activation`], [`device`]).
+//! - the maintainers' key files, encrypted with a password ([`keys`], [`files`]).
 
-pub mod activation;
 #[cfg(any(test, feature = "dev-keys"))]
 pub mod dev;
-pub mod device;
+pub mod files;
 pub mod keys;
 pub mod manifest;
-pub mod protocol;
-pub mod stream;
 pub mod trust;
 
 /// Whether this build trusts the development root, whose private key is in this source. The
@@ -29,7 +25,7 @@ pub const DEV_KEYS: bool = cfg!(feature = "dev-keys");
 /// The name of this set of algorithms, carried by every manifest. A later set gets a new name.
 pub const SUITE: &str = "orqwa-1";
 
-/// Why a world file, key or activation was refused.
+/// Why a world file or key was refused.
 #[derive(Debug, thiserror::Error)]
 pub enum LicenceError {
     /// A signature does not hold for the bytes it covers.
@@ -47,15 +43,6 @@ pub enum LicenceError {
     /// A key signed something it is not certified for.
     #[error("Key {0} may not sign this.")]
     WrongPurpose(String),
-    /// Encrypted data that is damaged, cut short, or sealed with another key.
-    #[error("Encrypted data is damaged or belongs to another world.")]
-    Decrypt,
-    /// An activation that is not for this world, or not for this device.
-    #[error("This activation belongs to another device or world.")]
-    NotThisDevice,
-    /// The operating system gave no id for this computer, which activations are bound to.
-    #[error("This device's id could not be read, so worlds cannot be activated on it.")]
-    NoMachine,
     /// A protected key file with a wrong password, or damaged.
     #[error("Wrong password, or the key file is damaged.")]
     Password,
@@ -139,27 +126,6 @@ pub(crate) mod b64 {
         let text = String::deserialize(d)?;
         STANDARD.decode(text).map_err(serde::de::Error::custom)
     }
-}
-
-/// HKDF output of a chosen length, for keys that are not AEAD keys.
-pub(crate) struct Len(pub(crate) usize);
-
-impl aws_lc_rs::hkdf::KeyType for Len {
-    fn len(&self) -> usize {
-        self.0
-    }
-}
-
-/// HKDF-SHA-512 of `secret` into `N` bytes.
-pub(crate) fn derive<const N: usize>(salt: &[u8], secret: &[u8], info: &[&[u8]]) -> [u8; N] {
-    use aws_lc_rs::hkdf::{HKDF_SHA512, Salt};
-    let mut out = [0; N];
-    Salt::new(HKDF_SHA512, salt)
-        .extract(secret)
-        .expand(info, Len(N))
-        .and_then(|okm| okm.fill(&mut out))
-        .expect("HKDF-SHA-512 gives up to 255 × 64 bytes");
-    out
 }
 
 #[cfg(test)]

@@ -111,17 +111,17 @@ enum Command {
     // The maintainers' tools for world files (ADR 0043) work in every build but stay out of
     // the help: riders have no use for them.
     /// Seal a folder holding a world's `world.json` and the parts it names into a signed world
-    /// file, encrypted for sale with `--content-key`, and check it.
+    /// file, and check it.
     #[command(hide = true)]
     WorldSeal(worlds::SealArgs),
-    /// Make a key (a root, a world key or an activation key), encrypted with
+    /// Make a key (a root or a world key), encrypted with
     /// `ORQWA_KEY_PASSWORD`; its public half goes beside it as `*.pub.json`.
     #[command(hide = true)]
     KeyNew {
         /// Where to write the key.
         out: PathBuf,
     },
-    /// Let a root certify a world key or an activation key.
+    /// Let a root certify a world key.
     #[command(hide = true)]
     KeyCertify {
         /// The root's key.
@@ -130,16 +130,12 @@ enum Command {
         /// The public key to certify (`*.pub.json`).
         #[arg(long)]
         key: PathBuf,
-        /// What the key may sign.
-        #[arg(long, value_enum)]
-        purpose: worlds::KeyPurpose,
         /// A name for people, such as "world key 2026-11".
         #[arg(long)]
         name: String,
         /// Where to write the certificate.
         out: PathBuf,
     },
-    /// Let a root sign a list of withdrawn keys and worlds.
     #[command(hide = true)]
     RevocationSign {
         /// The root's key.
@@ -148,15 +144,6 @@ enum Command {
         /// The list: `{"sequence": n, "keys": [...], "worlds": [{"id", "version"}]}`.
         list: PathBuf,
         /// Where to write the signed list.
-        out: PathBuf,
-    },
-    /// Make a world's content key, encrypted with `ORQWA_KEY_PASSWORD`. Secret: it goes to the
-    /// activation server.
-    #[command(hide = true)]
-    ContentKeyNew {
-        /// The key's id, such as "lake-biel-2026-11".
-        id: String,
-        /// Where to write it.
         out: PathBuf,
     },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
@@ -324,12 +311,10 @@ async fn main() -> Result<()> {
         Command::KeyCertify {
             root,
             key,
-            purpose,
             name,
             out,
-        } => worlds::key_certify(&root, &key, purpose, &name, &out),
+        } => worlds::key_certify(&root, &key, &name, &out),
         Command::RevocationSign { root, list, out } => worlds::revocation_sign(&root, &list, &out),
-        Command::ContentKeyNew { id, out } => worlds::content_key_new(&id, &out),
         Command::SampleRides(args) => sample_rides::write(&args),
     }
 }

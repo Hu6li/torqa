@@ -1337,7 +1337,6 @@ name = "orqwa-storage"
 version = "0.6.5"
 dependencies = [
  "embedded-io-adapters",
- "flate2",
  "orqwa-domain",
  "orqwa-licence",
  "orqwa-world",
