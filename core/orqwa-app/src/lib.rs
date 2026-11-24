@@ -580,6 +580,10 @@ fn licence_failure(error: &licensing::LicensingError, activating: bool, name: &s
         E::Refused(R::DeviceLimit) => Kind::DeviceLimit,
         E::Refused(R::OtherDevice) => Kind::OtherDevice,
         E::Refused(R::TooMany) => Kind::TooManyAttempts,
+        E::InDataFolder(dir) => {
+            return Failure::new(Kind::DeviceFolder, error).arg(dir.display());
+        }
+        E::Licence(orqwa_licence::LicenceError::NoMachine) => Kind::NoMachineId,
         _ if activating => Kind::ActivateWorld,
         _ => Kind::ReleaseWorld,
     };
@@ -2059,9 +2063,11 @@ impl App {
         self.change_licence(path, None);
     }
 
-    /// The operating system's id for this device, where Rust cannot read it (Android).
+    /// The operating system's id for this device, where Rust cannot read it (Android). The
+    /// library is read again: worlds listed before it was known showed as locked.
     pub fn set_machine_id(&self, id: Vec<u8>) {
         self.licensing.set_machine_id(id);
+        self.worlds.forget();
     }
 
     fn change_licence(&mut self, path: &Path, licence_key: Option<String>) {
@@ -2317,10 +2323,10 @@ impl App {
     /// The map picture of the course at `path` (#192), the PNG the app drew when the course
     /// was prepared; `None` without one.
     #[must_use]
-    pub fn course_preview(path: &Path) -> Option<Vec<u8>> {
+    pub fn course_preview(&self, path: &Path) -> Option<Vec<u8>> {
         match authored::WorldRoute::parse(path) {
             // A world's picture is its author's (R282).
-            Some(which) => authored::preview(&which.file, &orqwa_storage::world::Trust::builtin()),
+            Some(which) => authored::preview(&which.file, &self.licensing.trust()),
             None => course::preview(path),
         }
     }

@@ -49,25 +49,26 @@ pub fn cache_dir() -> PathBuf {
 }
 
 /// This device's own folder for activating sold worlds (ADR 0043, R293): the device secret and
-/// activations. It never roams with a profile or syncs with the data folder, and is no cache a
-/// cleaner empties: copied to another device, it would open nothing there anyway.
+/// activations. It never roams with a profile or syncs with the data folder, and lies outside
+/// the cache, which cleaners empty: losing it would cost the activations their device slots.
+/// `None` where the platform names no home for it: no temporary folder stands in.
 #[must_use]
-pub fn device_dir() -> PathBuf {
+pub fn device_dir() -> Option<PathBuf> {
     if cfg!(target_os = "android") {
-        return android_device_dir(&std::env::temp_dir());
+        return Some(android_device_dir(&std::env::temp_dir()));
     }
     let env = |key: &str| std::env::var_os(key).map(PathBuf::from);
     let home = env("HOME").or_else(|| env("USERPROFILE"));
-    let dir = if cfg!(target_os = "macos") {
+    if cfg!(target_os = "macos") {
         home.map(|h| h.join("Library/Application Support/org.orqwa.device"))
     } else if cfg!(windows) {
-        env("LOCALAPPDATA").map(|d| d.join("orqwa").join("device"))
+        // Beside the cache (`%LOCALAPPDATA%\orqwa`), not in it.
+        env("LOCALAPPDATA").map(|d| d.join("orqwa-device"))
     } else {
         env("XDG_STATE_HOME")
             .or_else(|| home.map(|h| h.join(".local/state")))
             .map(|d| d.join("orqwa"))
-    };
-    dir.unwrap_or_else(|| std::env::temp_dir().join("orqwa-device"))
+    }
 }
 
 /// The device folder on Android: in the app's private `files`, beside the private data folder,
@@ -198,8 +199,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_device_folder_is_never_in_the_data_folder() {
-        assert!(outside(&device_dir(), &data_dir()));
+    fn the_device_folder_is_never_in_the_data_folder_or_the_cache() {
+        let device = device_dir().unwrap();
+        assert!(outside(&device, &data_dir()));
+        assert!(outside(&device, &cache_dir()));
         let app_cache = Path::new("/data/user/0/org.orqwa.bike/cache");
         let device = android_device_dir(app_cache);
         assert_eq!(
@@ -207,6 +210,7 @@ mod tests {
             PathBuf::from("/data/user/0/org.orqwa.bike/files/device")
         );
         assert!(outside(&device, &android_dirs(app_cache).0));
+        assert!(outside(&device, &android_dirs(app_cache).1));
         assert!(!outside(Path::new("/x/data/device"), Path::new("/x/data")));
     }
 

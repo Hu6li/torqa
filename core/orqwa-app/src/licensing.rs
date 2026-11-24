@@ -28,7 +28,8 @@ const MAX_ANSWER_BYTES: usize = 4 * 1024 * 1024;
 /// Why activating or releasing failed.
 #[derive(Debug, thiserror::Error)]
 pub enum LicensingError {
-    /// The device folder lies in the data folder, which may sync to other devices.
+    /// The device folder lies in the data folder, which may sync to other devices, or there is
+    /// none.
     #[error("the device folder {0} lies in the data folder")]
     InDataFolder(PathBuf),
     /// The server could not be reached.
@@ -74,14 +75,19 @@ impl std::fmt::Debug for Licensing {
 }
 
 impl Licensing {
-    /// Licensing kept in `dir`, refused if `dir` lies in `data_dir`.
+    /// Licensing kept in `dir` ([`crate::paths::device_dir`]); refused without one, or if it
+    /// lies in `data_dir`.
     #[must_use]
-    pub fn new(dir: PathBuf, data_dir: &Path) -> Self {
-        Self::with_server(dir, data_dir, SERVER)
+    pub fn new(dir: Option<PathBuf>, data_dir: &Path) -> Self {
+        let Some(dir) = dir else {
+            warn!("no device folder: no activations");
+            return Self::with_server(PathBuf::new(), data_dir, SERVER, false);
+        };
+        Self::with_server(dir, data_dir, SERVER, true)
     }
 
-    pub(crate) fn with_server(dir: PathBuf, data_dir: &Path, server: &str) -> Self {
-        let usable = crate::paths::outside(&dir, data_dir);
+    pub(crate) fn with_server(dir: PathBuf, data_dir: &Path, server: &str, usable: bool) -> Self {
+        let usable = usable && crate::paths::outside(&dir, data_dir);
         if !usable {
             warn!(dir = %dir.display(), "the device folder lies in the data folder: no activations");
         }
@@ -105,16 +111,20 @@ impl Licensing {
     }
 
     /// The operating system's id for this device, where ORQWA cannot read it itself (Android,
-    /// through Java).
+    /// through Java). An empty one is ignored.
     pub fn set_machine_id(&self, id: Vec<u8>) {
-        *lock(&self.inner.machine) = Some(id);
+        if !id.is_empty() {
+            *lock(&self.inner.machine) = Some(id);
+        }
     }
 
-    fn machine(&self) -> Vec<u8> {
+    /// The machine id activations are bound to; none, and nothing is activated or opened, as an
+    /// activation not bound to the machine would open wherever its folder is copied.
+    fn machine(&self) -> Result<Vec<u8>, LicensingError> {
         lock(&self.inner.machine)
             .clone()
             .or_else(device::machine_id)
-            .unwrap_or_default()
+            .ok_or(LicensingError::Licence(LicenceError::NoMachine))
     }
 
     /// The roots and the newest withdrawals world files are checked against.
@@ -131,7 +141,7 @@ impl Licensing {
         if !self.inner.usable {
             return Err(LicensingError::InDataFolder(self.inner.dir.clone()));
         }
-        Ok(Device::load_or_create(&self.inner.dir, &self.machine())?)
+        Ok(Device::load_or_create(&self.inner.dir, &self.machine()?)?)
     }
 
     fn activation_file(&self, world: &str) -> PathBuf {
@@ -254,12 +264,23 @@ impl Licensing {
             .await
             .map_err(unreachable)?;
         let status = response.status();
-        let bytes = response.bytes().await.map_err(unreachable)?;
-        if bytes.len() > MAX_ANSWER_BYTES {
-            return Err(LicensingError::Server("the answer is too large".into()));
+        let too_large = || LicensingError::Server("the answer is too large".into());
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_ANSWER_BYTES as u64)
+        {
+            return Err(too_large());
+        }
+        let mut response = response;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(unreachable)? {
+            if bytes.len() + chunk.len() > MAX_ANSWER_BYTES {
+                return Err(too_large());
+            }
+            bytes.extend_from_slice(&chunk);
         }
         if status.is_success() {
-            return Ok(bytes.to_vec());
+            return Ok(bytes);
         }
         match serde_json::from_slice::<Refused>(&bytes) {
             Ok(refused) => Err(LicensingError::Refused(refused.refusal)),
@@ -272,8 +293,10 @@ impl Licensing {
 /// 1.3, checking the server's certificate as the operating system does (ADR 0043).
 fn client(server: &str) -> Result<reqwest::Client, LicensingError> {
     use rustls_platform_verifier::BuilderVerifierExt as _;
+    // No redirects: one would carry the licence key and device key to another host.
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("ORQWA/", env!("CARGO_PKG_VERSION")));
     if server.starts_with("https://") {
         let mut provider = rustls::crypto::aws_lc_rs::default_provider();
@@ -285,7 +308,7 @@ fn client(server: &str) -> Result<reqwest::Client, LicensingError> {
             .with_platform_verifier()
             .map_err(tls)?
             .with_no_client_auth();
-        builder = builder.tls_backend_preconfigured(config);
+        builder = builder.tls_backend_preconfigured(config).https_only(true);
     } else if !cfg!(test) {
         return Err(LicensingError::Server(
             "the activation server must use HTTPS".into(),

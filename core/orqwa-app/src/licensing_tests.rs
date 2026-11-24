@@ -55,8 +55,17 @@ pub(crate) fn server(
             let mut body = vec![0; length];
             reader.read_exact(&mut body).unwrap();
             let (status, reply) = answer(&path, &body);
+            // A redirect's body names where to: "<url>", sent as its location.
+            let location = if status == 307 {
+                format!(
+                    "location: {}/v1/activate\r\n",
+                    String::from_utf8_lossy(&reply)
+                )
+            } else {
+                String::new()
+            };
             let head = format!(
-                "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                "HTTP/1.1 {status} X\r\n{location}content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                 reply.len()
             );
             stream.write_all(head.as_bytes()).unwrap();
@@ -101,7 +110,7 @@ fn dirs(name: &str) -> (PathBuf, PathBuf) {
 }
 
 fn licensing(device: &Path, data: &Path, server: &str, machine: &[u8]) -> Licensing {
-    let licensing = Licensing::with_server(device.to_owned(), data, server);
+    let licensing = Licensing::with_server(device.to_owned(), data, server, true);
     licensing.set_machine_id(machine.to_vec());
     licensing
 }
@@ -216,6 +225,36 @@ async fn newer_withdrawals_from_the_server_are_kept() {
         .activate(WORLD, "key")
         .await
         .unwrap();
-    let restarted = Licensing::with_server(device, &data, &url);
+    let restarted = Licensing::with_server(device, &data, &url, true);
     assert_eq!(restarted.trust().revocations().sequence, 3);
+}
+
+#[tokio::test]
+async fn without_a_machine_id_nothing_is_activated_or_sent() {
+    let (url, requests) = server(activating);
+    let (device, data) = dirs("unbound");
+    let licensing = Licensing::with_server(device.clone(), &data, &url, true);
+    licensing.set_machine_id(Vec::new());
+    if device::machine_id().is_none() {
+        assert!(matches!(
+            licensing.activate(WORLD, "key").await,
+            Err(LicensingError::Licence(LicenceError::NoMachine))
+        ));
+        assert_eq!(requests.load(Ordering::SeqCst), 0, "nothing was sent");
+        assert!(!device.join(device::FILE).exists());
+    }
+}
+
+#[tokio::test]
+async fn a_redirect_is_not_followed_with_the_keys() {
+    let (elsewhere, reached) = server(activating);
+    let (url, _) = server(move |_, _| (307, elsewhere.clone().into_bytes()));
+    let (device, data) = dirs("redirect");
+    let licensing = licensing(&device, &data, &url, b"m");
+    assert!(licensing.activate(WORLD, "key").await.is_err());
+    assert_eq!(
+        reached.load(Ordering::SeqCst),
+        0,
+        "the licence key went nowhere else"
+    );
 }

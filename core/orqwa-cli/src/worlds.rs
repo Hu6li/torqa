@@ -65,14 +65,13 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 fn write_new(path: &Path, text: &str) -> Result<()> {
-    if path.exists() {
-        bail!(
+    match orqwa_licence::device::write_new_private(path, text.as_bytes()) {
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => bail!(
             "{} exists already; keys and certificates are never overwritten",
             path.display()
-        );
+        ),
+        written => written.with_context(|| format!("cannot write {}", path.display())),
     }
-    orqwa_licence::device::write_private(path, text.as_bytes())
-        .with_context(|| format!("cannot write {}", path.display()))
 }
 
 fn public_path(key: &Path) -> PathBuf {
@@ -87,13 +86,7 @@ fn trust(extra: Option<&Path>) -> Result<Trust> {
     let Some(extra) = extra else {
         return Ok(builtin);
     };
-    let root: PublicKey = read_json(extra)?;
-    #[allow(unused_mut)] // without dev-keys, nothing is added
-    let mut roots = vec![root];
-    // Keep the built-in roots too: a world sealed for release must open with them alone.
-    #[cfg(feature = "dev-keys")]
-    roots.push(orqwa_licence::dev::root().public().clone());
-    Ok(Trust::new(roots, builtin.revocations().clone()))
+    Ok(builtin.with_root(read_json(extra)?))
 }
 
 /// Makes a new key, written encrypted to `out`, its public half to `out.pub.json`.
@@ -148,7 +141,7 @@ pub fn revocation_sign(root: &Path, list: &Path, out: &Path) -> Result<()> {
 
 /// Makes a world's content key.
 pub fn content_key_new(id: &str, out: &Path) -> Result<()> {
-    write_new(out, &ContentKey::generate(id)?.to_json()?)?;
+    write_new(out, &ContentKey::generate(id)?.protect(&password()?)?)?;
     println!("content key {id} written to {}", out.display());
     Ok(())
 }
@@ -166,7 +159,10 @@ pub fn seal(args: &SealArgs) -> Result<()> {
         .content_key
         .as_deref()
         .map(|path| -> Result<ContentKey> {
-            Ok(ContentKey::from_json(&std::fs::read_to_string(path)?)?)
+            let text = std::fs::read_to_string(path)
+                .with_context(|| format!("cannot read {}", path.display()))?;
+            ContentKey::unprotect(&text, &password()?)
+                .with_context(|| format!("cannot open {}", path.display()))
         })
         .transpose()?;
     let sealer = Sealer {

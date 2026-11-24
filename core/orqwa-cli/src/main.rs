@@ -29,6 +29,12 @@ use tracing_subscriber::EnvFilter;
 
 use devices::DeviceArgs;
 
+// A release build trusting the development root would open worlds anyone can sign (ADR 0043).
+const _: () = assert!(
+    !orqwa_licence::DEV_KEYS || cfg!(debug_assertions),
+    "dev-keys is for development builds only: release builds must not trust it"
+);
+
 #[derive(Parser)]
 #[command(
     name = "orqwa-cli",
@@ -144,7 +150,8 @@ enum Command {
         /// Where to write the signed list.
         out: PathBuf,
     },
-    /// Make a world's content key. Secret: it goes to the activation server.
+    /// Make a world's content key, encrypted with `ORQWA_KEY_PASSWORD`. Secret: it goes to the
+    /// activation server.
     #[command(hide = true)]
     ContentKeyNew {
         /// The key's id, such as "lake-biel-2026-11".

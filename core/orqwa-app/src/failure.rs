@@ -179,7 +179,8 @@ pub enum Kind {
     ActivateWorld,
     /// This licence key does not unlock this world.
     LicenceRefused,
-    /// This licence is active on 5 devices already. Release one of them, then activate here.
+    /// This licence is active on all the devices it allows. Release one of them, then activate
+    /// here.
     DeviceLimit,
     /// Another computer uses this device's activation. Release it there first.
     OtherDevice,
@@ -187,6 +188,11 @@ pub enum Kind {
     TooManyAttempts,
     /// Could not release this device from %s.
     ReleaseWorld,
+    /// Paid worlds cannot be activated here: ORQWA's device folder %s lies in its data folder,
+    /// which may sync to other devices.
+    DeviceFolder,
+    /// This device's id could not be read, so paid worlds cannot be activated on it.
+    NoMachineId,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
@@ -304,13 +310,19 @@ impl Kind {
             Self::ActivateWorld => "Could not activate %s.",
             Self::LicenceRefused => "This licence key does not unlock this world.",
             Self::DeviceLimit => {
-                "This licence is active on 5 devices already. Release one of them, then activate here."
+                "This licence is active on all the devices it allows. Release one of them, then activate here."
             }
             Self::OtherDevice => {
                 "Another computer uses this device's activation. Release it there first."
             }
             Self::TooManyAttempts => "Too many attempts. Try again later.",
             Self::ReleaseWorld => "Could not release this device from %s.",
+            Self::DeviceFolder => {
+                "Paid worlds cannot be activated here: ORQWA's device folder %s lies in its data folder, which may sync to other devices."
+            }
+            Self::NoMachineId => {
+                "This device's id could not be read, so paid worlds cannot be activated on it."
+            }
             Self::MemoryPressure => {
                 "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
             }

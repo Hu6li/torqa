@@ -3511,8 +3511,8 @@ msgstr "Dieses Gerät freigeben?"
 msgid "The world locks on this device, and one of the licence's devices is free again."
 msgstr "Die Welt wird auf diesem Gerät gesperrt, und eines der Geräte der Lizenz ist wieder frei."
 
-msgid "This licence is active on 5 devices already. Release one of them, then activate here."
-msgstr "Diese Lizenz ist bereits auf 5 Geräten aktiv. Gib eines davon frei und aktiviere dann hier."
+msgid "This licence is active on all the devices it allows. Release one of them, then activate here."
+msgstr "Diese Lizenz ist bereits auf allen erlaubten Geräten aktiv. Gib eines davon frei und aktiviere dann hier."
 
 msgid "This licence key does not unlock this world."
 msgstr "Dieser Lizenzschlüssel schaltet diese Welt nicht frei."
@@ -3522,3 +3522,9 @@ msgstr "Dies ist eine kostenpflichtige Welt. Gib den Lizenzschlüssel aus deinem
 
 msgid "Too many attempts. Try again later."
 msgstr "Zu viele Versuche. Versuche es später noch einmal."
+
+msgid "Paid worlds cannot be activated here: ORQWA's device folder %s lies in its data folder, which may sync to other devices."
+msgstr "Kostenpflichtige Welten können hier nicht aktiviert werden: Der Geräteordner %s von ORQWA liegt in seinem Datenordner, der mit anderen Geräten synchronisiert werden kann."
+
+msgid "This device's id could not be read, so paid worlds cannot be activated on it."
+msgstr "Die Kennung dieses Geräts konnte nicht gelesen werden, daher können kostenpflichtige Welten darauf nicht aktiviert werden."

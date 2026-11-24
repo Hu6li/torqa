@@ -192,22 +192,9 @@ impl KeyPair {
     /// # Errors
     /// [`LicenceError::Random`] if no secure random bytes are available.
     pub fn protect(&self, password: &str) -> Result<String, LicenceError> {
-        let salt: [u8; 32] = random()?;
-        let nonce: [u8; NONCE_LEN] = random()?;
-        let mut sealed = self.seeds.to_vec();
-        password_key(password, &salt, ITERATIONS)
-            .seal_in_place_append_tag(
-                Nonce::assume_unique_for_key(nonce),
-                Aad::from(PROTECTED),
-                &mut sealed,
-            )
-            .map_err(|_| LicenceError::Invalid("could not seal the key".into()))?;
         let file = ProtectedKey {
-            format: PROTECTED.to_owned(),
-            iterations: ITERATIONS.get(),
-            salt: salt.to_vec(),
-            nonce: nonce.to_vec(),
-            sealed,
+            format: KEY_FILE.to_owned(),
+            secret: Sealed::seal(&self.seeds, password, KEY_FILE)?,
             public: self.public.clone(),
         };
         Ok(serde_json::to_string_pretty(&file)?)
@@ -219,17 +206,14 @@ impl KeyPair {
     /// [`LicenceError::Password`] for a wrong password or a changed file.
     pub fn unprotect(text: &str, password: &str) -> Result<Self, LicenceError> {
         let file: ProtectedKey = serde_json::from_str(text)?;
-        let iterations = NonZeroU32::new(file.iterations)
-            .filter(|_| file.format == PROTECTED)
-            .ok_or_else(|| LicenceError::Invalid("not an ORQWA key file".into()))?;
-        let nonce =
-            Nonce::try_assume_unique_for_key(&file.nonce).map_err(|_| LicenceError::Password)?;
-        let mut sealed = file.sealed;
-        let seeds: [u8; SEEDS] = password_key(password, &file.salt, iterations)
-            .open_in_place(nonce, Aad::from(PROTECTED), &mut sealed)
-            .ok()
-            .and_then(|seeds| <[u8; SEEDS]>::try_from(&*seeds).ok())
-            .ok_or(LicenceError::Password)?;
+        if file.format != KEY_FILE {
+            return Err(LicenceError::Invalid("not an ORQWA key file".into()));
+        }
+        let seeds: [u8; SEEDS] = file
+            .secret
+            .open(password, KEY_FILE)?
+            .try_into()
+            .map_err(|_| LicenceError::Password)?;
         let key = Self::from_seeds(&seeds)?;
         if key.public != file.public {
             return Err(LicenceError::Password);
@@ -238,21 +222,65 @@ impl KeyPair {
     }
 }
 
-const PROTECTED: &str = "orqwa-key-1";
+const KEY_FILE: &str = "orqwa-key-1";
+/// PBKDF2 rounds for new files; files with fewer, or absurdly many, are refused.
 const ITERATIONS: NonZeroU32 = NonZeroU32::new(600_000).expect("not zero");
+const MAX_ITERATIONS: u32 = 10_000_000;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProtectedKey {
     format: String,
+    secret: Sealed,
+    public: PublicKey,
+}
+
+/// A secret encrypted with a password: PBKDF2-HMAC-SHA-512, then AES-256-GCM with the file's
+/// format as associated data, so a secret of one kind of file cannot pass for another's.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Sealed {
     iterations: u32,
     #[serde(with = "b64")]
     salt: Vec<u8>,
     #[serde(with = "b64")]
     nonce: Vec<u8>,
     #[serde(with = "b64")]
-    sealed: Vec<u8>,
-    public: PublicKey,
+    ciphertext: Vec<u8>,
+}
+
+impl Sealed {
+    pub(crate) fn seal(secret: &[u8], password: &str, format: &str) -> Result<Self, LicenceError> {
+        let salt: [u8; 32] = random()?;
+        let nonce: [u8; NONCE_LEN] = random()?;
+        let mut sealed = secret.to_vec();
+        password_key(password, &salt, ITERATIONS)
+            .seal_in_place_append_tag(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(format.as_bytes()),
+                &mut sealed,
+            )
+            .map_err(|_| LicenceError::Invalid("could not seal the secret".into()))?;
+        Ok(Self {
+            iterations: ITERATIONS.get(),
+            salt: salt.to_vec(),
+            nonce: nonce.to_vec(),
+            ciphertext: sealed,
+        })
+    }
+
+    pub(crate) fn open(&self, password: &str, format: &str) -> Result<Vec<u8>, LicenceError> {
+        let iterations = NonZeroU32::new(self.iterations)
+            .filter(|n| (ITERATIONS.get()..=MAX_ITERATIONS).contains(&n.get()))
+            .ok_or_else(|| LicenceError::Invalid("unsupported key protection".into()))?;
+        let nonce =
+            Nonce::try_assume_unique_for_key(&self.nonce).map_err(|_| LicenceError::Password)?;
+        let mut sealed = self.ciphertext.clone();
+        password_key(password, &self.salt, iterations)
+            .open_in_place(nonce, Aad::from(format.as_bytes()), &mut sealed)
+            .map(|secret| secret.to_vec())
+            .map_err(|_| LicenceError::Password)
+    }
 }
 
 fn password_key(password: &str, salt: &[u8], iterations: NonZeroU32) -> LessSafeKey {
@@ -322,6 +350,17 @@ mod tests {
         assert_eq!(a.public().id(), b.public().id());
         assert_eq!(a.public().id().0.len(), 32);
         assert_ne!(a.public().id(), KeyPair::generate().unwrap().public().id());
+    }
+
+    #[test]
+    fn key_files_with_weakened_protection_are_refused() {
+        let key = KeyPair::generate().unwrap();
+        let mut file: serde_json::Value =
+            serde_json::from_str(&key.protect("correct horse").unwrap()).unwrap();
+        for iterations in [1, u32::MAX] {
+            file["secret"]["iterations"] = iterations.into();
+            assert!(KeyPair::unprotect(&file.to_string(), "correct horse").is_err());
+        }
     }
 
     #[test]

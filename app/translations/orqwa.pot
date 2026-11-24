@@ -2839,6 +2839,10 @@ msgstr ""
 msgid "Pacer at your FTP"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Paid worlds cannot be activated here: ORQWA's device folder %s lies in its data folder, which may sync to other devices."
+msgstr ""
+
 #: app/ui/video_align_dialog.gd
 msgid "Pair moments of the video with places on the route."
 msgstr ""
@@ -3867,6 +3871,10 @@ msgstr ""
 msgid "This device lets no app install apps, so ORQWA cannot update itself."
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "This device's id could not be read, so paid worlds cannot be activated on it."
+msgstr ""
+
 #: app/ui/group_join_card.gd
 msgid "This invitation is from a newer ORQWA version. Update ORQWA to join."
 msgstr ""
@@ -3880,7 +3888,7 @@ msgid "This is a paid world. Enter the licence key from your purchase to ride it
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
-msgid "This licence is active on 5 devices already. Release one of them, then activate here."
+msgid "This licence is active on all the devices it allows. Release one of them, then activate here."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs

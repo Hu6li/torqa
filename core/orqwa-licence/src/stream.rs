@@ -4,12 +4,13 @@
 //! last. Chunks cannot be moved, repeated or dropped, and an entry cannot be cut short. Each
 //! entry has its own key, derived from the world's content key and the entry's name.
 
-use std::io::{self, Cursor, Read, Seek, SeekFrom};
+use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 
 use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, Nonce, UnboundKey};
 use serde::{Deserialize, Serialize};
 
-use crate::{LicenceError, b64, derive, random};
+use crate::keys::Sealed;
+use crate::{LicenceError, derive, random};
 
 /// Plain text per chunk.
 pub const CHUNK: usize = 64 * 1024;
@@ -35,10 +36,12 @@ impl std::fmt::Debug for ContentKey {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ContentKeyFile {
+    format: String,
     id: String,
-    #[serde(with = "b64")]
-    key: Vec<u8>,
+    secret: Sealed,
 }
+
+const CONTENT_KEY_FILE: &str = "orqwa-content-key-1";
 
 impl ContentKey {
     /// A new key named `id` (such as "lake-biel-2026-11").
@@ -71,28 +74,36 @@ impl ContentKey {
         &self.key
     }
 
-    /// The key as JSON, for the maintainers' tools and the activation server. Secret.
+    /// The key as a JSON file encrypted with `password`, as private keys are: a leaked content
+    /// key opens its world for everyone.
     ///
     /// # Errors
-    /// Only in theory.
-    pub fn to_json(&self) -> Result<String, LicenceError> {
+    /// [`LicenceError::Random`] if no secure random bytes are available.
+    pub fn protect(&self, password: &str) -> Result<String, LicenceError> {
         let file = ContentKeyFile {
+            format: CONTENT_KEY_FILE.to_owned(),
             id: self.id.clone(),
-            key: self.key.to_vec(),
+            secret: Sealed::seal(&self.key, password, CONTENT_KEY_FILE)?,
         };
         Ok(serde_json::to_string_pretty(&file)?)
     }
 
-    /// A key [`ContentKey::to_json`] wrote.
+    /// A key [`ContentKey::protect`] wrote.
     ///
     /// # Errors
-    /// If the JSON or the key's length is wrong.
-    pub fn from_json(text: &str) -> Result<Self, LicenceError> {
+    /// [`LicenceError::Password`] for a wrong password or a changed file.
+    pub fn unprotect(text: &str, password: &str) -> Result<Self, LicenceError> {
         let file: ContentKeyFile = serde_json::from_str(text)?;
+        if file.format != CONTENT_KEY_FILE {
+            return Err(LicenceError::Invalid(
+                "not an ORQWA content key file".into(),
+            ));
+        }
         let key = file
-            .key
+            .secret
+            .open(password, CONTENT_KEY_FILE)?
             .try_into()
-            .map_err(|_| LicenceError::Invalid("a content key has 32 bytes".into()))?;
+            .map_err(|_| LicenceError::Password)?;
         Ok(Self { id: file.id, key })
     }
 
@@ -127,39 +138,80 @@ pub fn plain_len(sealed: u64) -> Option<u64> {
 /// # Errors
 /// [`LicenceError::Random`] if no secure random bytes are available, or
 /// [`LicenceError::Invalid`] for an entry beyond 2³² chunks.
-///
-/// # Panics
-/// Never: the number of chunks is checked first.
 pub fn encrypt(key: &ContentKey, entry: &str, plain: &[u8]) -> Result<Vec<u8>, LicenceError> {
-    let chunks = chunk_count(plain.len() as u64);
-    if chunks > u64::from(u32::MAX) {
-        return Err(LicenceError::Invalid(format!(
-            "{entry} is too large to encrypt"
-        )));
+    let mut encryptor = Encryptor::new(Vec::with_capacity(plain.len() + PREFIX + TAG), key, entry)?;
+    encryptor.write_all(plain)?;
+    Ok(encryptor.finish()?)
+}
+
+/// Encrypts an entry as it is written, a chunk at a time, into `out`; [`Encryptor::finish`]
+/// seals the last chunk. Writes the same bytes as [`encrypt`].
+pub struct Encryptor<W: Write> {
+    out: W,
+    key: LessSafeKey,
+    prefix: [u8; PREFIX],
+    pending: Vec<u8>,
+    number: u32,
+}
+
+impl<W: Write> Encryptor<W> {
+    /// Starts entry `entry`, writing its random prefix.
+    ///
+    /// # Errors
+    /// [`LicenceError::Random`] if no secure random bytes are available, or a write error.
+    pub fn new(mut out: W, key: &ContentKey, entry: &str) -> Result<Self, LicenceError> {
+        let prefix: [u8; PREFIX] = random()?;
+        out.write_all(&prefix)?;
+        Ok(Self {
+            out,
+            key: key.entry_key(entry),
+            prefix,
+            pending: Vec::with_capacity(2 * CHUNK),
+            number: 0,
+        })
     }
-    let prefix: [u8; PREFIX] = random()?;
-    let sealing = key.entry_key(entry);
-    let mut out =
-        Vec::with_capacity(PREFIX + plain.len() + TAG * usize::try_from(chunks).unwrap_or(0));
-    out.extend_from_slice(&prefix);
-    let mut parts: Vec<&[u8]> = plain.chunks(CHUNK).collect();
-    if parts.is_empty() {
-        parts.push(&[]);
-    }
-    let last = parts.len() - 1;
-    for (i, part) in parts.into_iter().enumerate() {
-        let number = u32::try_from(i).expect("chunks counted above");
-        let mut sealed = part.to_vec();
-        sealing
+
+    fn seal(&mut self, len: usize, last: bool) -> io::Result<()> {
+        let mut chunk: Vec<u8> = self.pending.drain(..len).collect();
+        self.key
             .seal_in_place_append_tag(
-                nonce(prefix, number),
-                Aad::from([u8::from(i == last)]),
-                &mut sealed,
+                nonce(self.prefix, self.number),
+                Aad::from([u8::from(last)]),
+                &mut chunk,
             )
-            .map_err(|_| LicenceError::Invalid(format!("could not encrypt {entry}")))?;
-        out.extend_from_slice(&sealed);
+            .map_err(|_| io::Error::other("could not encrypt"))?;
+        self.out.write_all(&chunk)?;
+        self.number = self
+            .number
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("too large to encrypt"))?;
+        Ok(())
     }
-    Ok(out)
+
+    /// Seals the last chunk (empty for an empty entry) and hands back the output.
+    ///
+    /// # Errors
+    /// A write error.
+    pub fn finish(mut self) -> io::Result<W> {
+        let len = self.pending.len();
+        self.seal(len, true)?;
+        Ok(self.out)
+    }
+}
+
+impl<W: Write> Write for Encryptor<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.pending.extend_from_slice(buf);
+        // A full chunk is kept back until more follows: only finish knows the last one.
+        while self.pending.len() > CHUNK {
+            self.seal(CHUNK, false)?;
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.out.flush()
+    }
 }
 
 /// Decrypts a whole entry.
@@ -203,7 +255,7 @@ impl<R: Read + Seek> Decryptor<R> {
         let mut prefix = [0; PREFIX];
         inner.seek(SeekFrom::Start(0))?;
         inner.read_exact(&mut prefix)?;
-        Ok(Self {
+        let mut decryptor = Self {
             inner,
             key: key.entry_key(entry),
             prefix,
@@ -212,7 +264,13 @@ impl<R: Read + Seek> Decryptor<R> {
             chunks: chunk_count(plain_len),
             position: 0,
             chunk: None,
-        })
+        };
+        // An empty entry is one empty chunk, which no read would open: open it here, so a
+        // wrong key or a forged entry fails for it too.
+        if plain_len == 0 {
+            decryptor.load(0)?;
+        }
+        Ok(decryptor)
     }
 
     /// The plain text's length.
@@ -328,6 +386,24 @@ mod tests {
     }
 
     #[test]
+    fn written_in_any_pieces_it_decrypts_the_same() {
+        let plain = data(3 * CHUNK + 5);
+        for piece in [1, 4096, CHUNK, CHUNK + 7] {
+            let mut encryptor = Encryptor::new(Vec::new(), &key(), "a.glb").unwrap();
+            for part in plain.chunks(piece) {
+                encryptor.write_all(part).unwrap();
+            }
+            let sealed = encryptor.finish().unwrap();
+            assert_eq!(
+                plain_len(sealed.len() as u64),
+                Some(plain.len() as u64),
+                "{piece}"
+            );
+            assert_eq!(decrypt(&key(), "a.glb", &sealed).unwrap(), plain, "{piece}");
+        }
+    }
+
+    #[test]
     fn the_same_plain_text_encrypts_differently_each_time() {
         let plain = data(10);
         assert_ne!(
@@ -367,9 +443,29 @@ mod tests {
     }
 
     #[test]
-    fn a_content_key_file_round_trips() {
+    fn a_content_key_file_opens_only_with_its_password() {
         let key = ContentKey::generate("lake").unwrap();
-        assert_eq!(ContentKey::from_json(&key.to_json().unwrap()).unwrap(), key);
+        let file = key.protect("correct horse").unwrap();
+        assert_eq!(ContentKey::unprotect(&file, "correct horse").unwrap(), key);
+        assert!(matches!(
+            ContentKey::unprotect(&file, "wrong"),
+            Err(LicenceError::Password)
+        ));
         assert!(!format!("{key:?}").contains(&format!("{:?}", key.key)));
+        // A world key's file is not a content key's.
+        let world_key = crate::keys::KeyPair::generate()
+            .unwrap()
+            .protect("correct horse")
+            .unwrap();
+        assert!(ContentKey::unprotect(&world_key, "correct horse").is_err());
+    }
+
+    #[test]
+    fn an_empty_entry_is_authenticated_too() {
+        let sealed = encrypt(&key(), "a", b"").unwrap();
+        assert_eq!(decrypt(&key(), "a", &sealed).unwrap(), b"");
+        assert!(decrypt(&ContentKey::new("k", [4; 32]), "a", &sealed).is_err());
+        assert!(decrypt(&key(), "b", &sealed).is_err());
+        assert!(decrypt(&key(), "a", &[0xAA; PREFIX + TAG]).is_err());
     }
 }

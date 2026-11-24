@@ -325,7 +325,7 @@ Every world file is signed by a maintainers' world key; ORQWA refuses any other
 who signed it and whether it is encrypted, for tools that write world files.
 
 `orqwa-cli world-seal <folder> <file.oqx> --key <world key> --certificate <certificate>`
-packs a folder holding `world.json` and the parts it names into a world file, signs it and
+streams a folder holding `world.json` and the parts it names into a world file, signs it and
 checks it; with `--content-key <file>` it encrypts every part that may be encrypted. Images
 are stored; glTF, routes and `instances` files are deflated, and encrypted parts are deflated
 before they are encrypted. `--dev` seals with the development key instead, which only
@@ -341,7 +341,7 @@ lists what riders use:
 | `key-new <file>` | A new key, encrypted, with its public half in `<file>.pub.json`. Roots, world keys and activation keys are all made this way. |
 | `key-certify --root <root> --key <public> --purpose world\|activation --name <name> <out>` | A root's certificate for a working key. A new world key needs no ORQWA update. |
 | `revocation-sign --root <root> <list> <out>` | A root-signed list of withdrawn keys and worlds, `{"sequence", "keys", "worlds"}`. |
-| `content-key-new <id> <out>` | A world's content key. Secret; it goes to the activation server. |
+| `content-key-new <id> <out>` | A world's content key, encrypted with the same password. Secret; it goes to the activation server. |
 
 Keys and certificates are never overwritten. A root's public key is built into ORQWA by adding
 its `.pub.json` to `RELEASE_ROOTS` in `orqwa-licence`.

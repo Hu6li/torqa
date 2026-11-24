@@ -202,7 +202,7 @@ fn a_sold_world_is_listed_locked_and_opens_once_activated_on_this_device() {
     let dir = temp_dir("world-sold");
     let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
     let (url, _) = fake::server(fake::activating);
-    app.licensing = Licensing::with_server(dir.join("device"), &dir.join("data"), &url);
+    app.licensing = Licensing::with_server(dir.join("device"), &dir.join("data"), &url, true);
     app.licensing.set_machine_id(b"this machine".to_vec());
     app.import_course(sealed(
         &dir,

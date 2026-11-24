@@ -26,7 +26,9 @@ use flate2::Compression;
 use flate2::read::{DeflateDecoder, DeflateEncoder};
 use orqwa_licence::LicenceError;
 use orqwa_licence::keys::{KeyId, KeyPair};
-use orqwa_licence::manifest::{self as signing, Hashing, MANIFEST, Manifest, SIGNATURE};
+use orqwa_licence::manifest::{
+    self as signing, Hashing, HashingWriter, MANIFEST, Manifest, SIGNATURE,
+};
 use orqwa_licence::stream::{self, ContentKey};
 use orqwa_licence::trust::Signed;
 use serde::{Deserialize, Serialize};
@@ -1160,8 +1162,7 @@ pub fn seal(
     sealer: &Sealer<'_>,
     trust: &Trust,
 ) -> Result<Description, WorldError> {
-    let description_bytes = std::fs::read(from.join(DESCRIPTION))?;
-    let description = description_of(&description_bytes)?;
+    let description = description_of(&std::fs::read(from.join(DESCRIPTION))?)?;
     let parts = description.parts()?;
     let partial = to.with_extension("oqx.part");
     let written = (|| {
@@ -1176,33 +1177,37 @@ pub fn seal(
             .compression_method(CompressionMethod::Deflated)
             .large_file(true);
         let mut entries = BTreeMap::new();
-        entries.insert(
-            DESCRIPTION.to_owned(),
-            signing::entry(&description_bytes, false, None),
-        );
-        let mut contents = vec![(DESCRIPTION.to_owned(), description_bytes.clone(), deflated)];
-        for (name, part) in &parts {
-            let plain = std::fs::read(from.join(name))?;
-            let (bytes, options, entry) = match sealer.content_key {
-                Some(key) if part.encryptable() => {
-                    let mut packed = Vec::new();
-                    DeflateEncoder::new(plain.as_slice(), Compression::default())
-                        .read_to_end(&mut packed)?;
-                    let encrypted = stream::encrypt(key, name, &packed)?;
-                    let entry = signing::entry(&encrypted, true, Some(plain.len() as u64));
-                    (encrypted, stored, entry)
+        // Each part streams from the folder into the archive, hashed on the way: a world may
+        // be far larger than memory. The manifest and its signature come last, once every hash
+        // is known; readers find entries by name.
+        for (name, part) in
+            std::iter::once((DESCRIPTION, None)).chain(parts.iter().map(|(n, p)| (*n, Some(*p))))
+        {
+            let mut input = io::BufReader::new(File::open(from.join(name))?);
+            let entry = match (sealer.content_key, part) {
+                (Some(key), Some(part)) if part.encryptable() => {
+                    zip.start_file(name, stored)?;
+                    let size = std::fs::metadata(from.join(name))?.len();
+                    let mut encryptor =
+                        stream::Encryptor::new(HashingWriter::new(&mut zip), key, name)?;
+                    io::copy(
+                        &mut DeflateEncoder::new(input, Compression::default()),
+                        &mut encryptor,
+                    )?;
+                    encryptor.finish()?.entry(true, Some(size))
                 }
                 _ => {
                     let options = match part {
-                        Part::Sky | Part::Preview => stored,
-                        Part::Glb | Part::Instances | Part::Route => deflated,
+                        Some(Part::Sky | Part::Preview) => stored,
+                        Some(Part::Glb | Part::Instances | Part::Route) | None => deflated,
                     };
-                    let entry = signing::entry(&plain, false, None);
-                    (plain, options, entry)
+                    zip.start_file(name, options)?;
+                    let mut hashing = HashingWriter::new(&mut zip);
+                    io::copy(&mut input, &mut hashing)?;
+                    hashing.entry(false, None)
                 }
             };
-            entries.insert((*name).to_owned(), entry);
-            contents.push(((*name).to_owned(), bytes, options));
+            entries.insert(name.to_owned(), entry);
         }
         let manifest = Manifest {
             suite: orqwa_licence::SUITE.to_owned(),
@@ -1218,10 +1223,6 @@ pub fn seal(
         io::Write::write_all(&mut zip, &manifest)?;
         zip.start_file(SIGNATURE, deflated)?;
         io::Write::write_all(&mut zip, &signature)?;
-        for (name, bytes, options) in contents {
-            zip.start_file(name, options)?;
-            io::Write::write_all(&mut zip, &bytes)?;
-        }
         zip.finish()?
             .into_inner()
             .map_err(io::IntoInnerError::into_error)?

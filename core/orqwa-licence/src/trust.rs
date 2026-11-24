@@ -154,6 +154,15 @@ impl Trust {
         Self { roots, revocations }
     }
 
+    /// Trusts `root` as well, for a root not yet built into ORQWA (the maintainers' tools).
+    #[must_use]
+    pub fn with_root(mut self, root: PublicKey) -> Self {
+        if !self.roots.contains(&root) {
+            self.roots.push(root);
+        }
+        self
+    }
+
     /// The withdrawals in force.
     #[must_use]
     pub fn revocations(&self) -> &Revocations {

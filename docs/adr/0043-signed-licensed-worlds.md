@@ -78,21 +78,23 @@ video reader can seek.
 - **Root keys**: two hybrid key pairs, a primary and a backup, kept offline in separate
   places. Only their public keys are built into ORQWA. A root signs certificates and revocation
   lists, and nothing else. A new root comes with an ORQWA release; a root is withdrawn only if
-  it leaks.
+  it leaks. **Either root alone is trusted fully** (1 of 2): the backup exists so that losing
+  one root costs nothing. Either can sign a revocation list, and a newer list replaces an older
+  one whole, so a leaked root could withdraw the other or take back withdrawals until a release
+  removes it. Both are kept offline for that reason.
 - **Working keys**: a **world key** that seals world files and an **activation key** that the
   activation server signs with. Each has a certificate signed by a root, with its purpose, a
   name and both public keys. A certificate has no end date: a device's clock cannot be trusted,
   and a sold world must keep opening, so a key ends only by withdrawal. Every world file and
-  every activation carries
-  its certificate, so a working key is replaced by making a new one and having a root certify
-  it. **ORQWA needs no update for that**, and files signed with the old key keep working.
+  every activation carries its certificate, so a working key is replaced by making a new one
+  and having a root certify it. **ORQWA needs no update for that**, and files signed with the old key keep working.
 - **Revocation**: a list signed by a root, numbered, naming withdrawn working keys and
   withdrawn versions of worlds. Each ORQWA release carries the newest list. The activation
   server returns it with every activation, and ORQWA keeps the highest-numbered list it has
   seen. A world signed with a withdrawn key is sealed again and offered to its buyers.
 - **Development root**: a separate root for tests, fuzzing and worlds still being built. ORQWA
-  trusts it only when built with the `dev-keys` feature, which release builds never have; CI
-  checks that.
+  trusts it only when built with the `dev-keys` feature. The programs ORQWA ships (`orqwa-gd`,
+  `orqwa-cli`) refuse to compile a release build that has it; tests and examples may.
 
 ### The file
 
@@ -115,18 +117,22 @@ signature.json   the working key's certificate and both signatures over manifest
 ### Activation
 
 - On first use, ORQWA makes a **device secret** of 32 random bytes and a random device id, kept
-  in a private device folder (`paths::device_dir()`). The **device key** is derived from the
-  secret and the operating system's machine id, read afresh each time; the machine id never
-  leaves the device.
+  in a private device folder (`paths::device_dir()`) with a hash of the machine id. The
+  **device key** is derived from the secret and the operating system's machine id; the machine
+  id never leaves the device.
+- **No machine id, no activation.** Where the operating system gives none (or, on Android,
+  before the app has handed it over), ORQWA neither activates nor opens activations: one not
+  bound to the machine would open wherever its folder is copied.
 - To activate, the rider enters the licence key from the purchase. ORQWA sends the licence key,
   the world's id, the device id and the device key to the activation server over TLS with
-  X25519MLKEM768.
+  X25519MLKEM768. Only HTTPS, and no redirects: one would carry the keys to another host.
 - **The server counts devices.** For each licence it keeps the devices it activated: the
   device id and a hash of its device key.
   - A known device id with the same key gets its activation again and uses no new slot, as
     after reinstalling ORQWA.
   - A known device id with a **different** key is refused. Otherwise one id could be shared by
-    many computers and counted once.
+    many computers and counted once. ORQWA itself never sends that: a device file copied to
+    another computer is noticed there by its machine hash and replaced by a new identity.
   - A new device is added while fewer than 5 are counted; a sixth is refused, with a message to
     release one first.
 - The server returns an **activation** signed with the activation key: licence id, world id,
@@ -144,13 +150,15 @@ signature.json   the working key's certificate and both signatures over manifest
 
 - World files live in `worlds/` in the data folder, which riders may sync: they are encrypted
   and open nothing by themselves.
-- The device secret and activations live only in the device folder, which never roams:
-  `~/Library/Application Support/org.orqwa.device` on macOS, `%LOCALAPPDATA%\orqwa\device` on
-  Windows, `$XDG_STATE_HOME/orqwa` on Linux and the app's private `files/device` on Android
-  (no sync app reaches it). ORQWA refuses to use a device folder inside the data folder.
+- The device secret and activations live only in the device folder, which never roams and is
+  no cache: `~/Library/Application Support/org.orqwa.device` on macOS,
+  `%LOCALAPPDATA%\orqwa-device` on Windows (beside the cache, not in it),
+  `$XDG_STATE_HOME/orqwa` on Linux and the app's private `files/device` on Android (no sync app
+  reaches it). ORQWA refuses to use a device folder inside the data folder, or none.
 - Android's backup of app data stays off, so a restored phone does not carry them.
-- If a copy reaches another computer anyway, its machine id derives a different device key:
-  the activations do not open there, and activating there is refused as above.
+- If a copy reaches another computer anyway (a backup restored, a migration), its machine id
+  derives a different device key, so the activations do not open there, and the copied identity
+  is replaced by a new one: that computer becomes a device of its own and activates as one.
 - The licence key is not stored.
 
 ### Not in ORQWA
@@ -160,9 +168,10 @@ signature.json   the working key's certificate and both signatures over manifest
   nothing but a licence key.
 - **The activation server** is a private service. It is not distributed, so the GPL does not
   reach it.
-- **Sealing tools** (`orqwa-cli key-new`, `key-certify`, `revocation-sign`, `world-seal`) are
-  open source; only the keys are secret. Private keys are kept encrypted with a password and
-  never stored in CI.
+- **Sealing tools** (`orqwa-cli key-new`, `key-certify`, `revocation-sign`,
+  `content-key-new`, `world-seal`) are open source and left out of the CLI's help; only the keys
+  are secret. Private keys and content keys are kept encrypted with a password and never stored
+  in CI. Sealing streams each part into the file, so a world may be larger than memory.
 
 ### A demo world
 

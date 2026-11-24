@@ -40,6 +40,12 @@ use orqwa_session::estimate;
 use orqwa_session::workout::{EffortTest, HeartRateHold, RampTest, Workout};
 use orqwa_world::{DetailCell, MapFeature};
 
+// A release build trusting the development root would open worlds anyone can sign (ADR 0043).
+const _: () = assert!(
+    !orqwa_licence::DEV_KEYS || cfg!(debug_assertions),
+    "dev-keys is for development builds only: release builds must not trust it"
+);
+
 #[cfg(target_os = "android")]
 mod android_audio;
 #[cfg(target_os = "android")]
@@ -1895,7 +1901,9 @@ impl OrqwaApp {
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
     #[allow(clippy::unused_self)] // a #[func] is called on the node
     fn course_preview(&self, path: GString) -> PackedByteArray {
-        App::course_preview(Path::new(&path.to_string()))
+        self.app
+            .as_ref()
+            .and_then(|app| app.course_preview(Path::new(&path.to_string())))
             .map(|png| PackedByteArray::from(png.as_slice()))
             .unwrap_or_default()
     }

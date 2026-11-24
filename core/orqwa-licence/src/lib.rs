@@ -12,10 +12,6 @@
 //! - encryption: AES-256-GCM in chunks, seekable ([`stream`]);
 //! - activation: a world's content key sealed for one device ([`activation`], [`device`]).
 
-// A release build trusting the development root would open worlds anyone can sign.
-#[cfg(all(feature = "dev-keys", not(debug_assertions)))]
-compile_error!("dev-keys is for development builds only: release builds must not trust it");
-
 pub mod activation;
 #[cfg(any(test, feature = "dev-keys"))]
 pub mod dev;
@@ -25,6 +21,10 @@ pub mod manifest;
 pub mod protocol;
 pub mod stream;
 pub mod trust;
+
+/// Whether this build trusts the development root, whose private key is in this source. The
+/// programs ORQWA ships refuse to compile a release build that does; tests and examples may.
+pub const DEV_KEYS: bool = cfg!(feature = "dev-keys");
 
 /// The name of this set of algorithms, carried by every manifest. A later set gets a new name.
 pub const SUITE: &str = "orqwa-1";
@@ -53,6 +53,9 @@ pub enum LicenceError {
     /// An activation that is not for this world, or not for this device.
     #[error("This activation belongs to another device or world.")]
     NotThisDevice,
+    /// The operating system gave no id for this computer, which activations are bound to.
+    #[error("This device's id could not be read, so worlds cannot be activated on it.")]
+    NoMachine,
     /// A protected key file with a wrong password, or damaged.
     #[error("Wrong password, or the key file is damaged.")]
     Password,

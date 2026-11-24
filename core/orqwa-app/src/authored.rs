@@ -164,21 +164,7 @@ type Read = HashMap<PathBuf, (SystemTime, u64, Vec<CourseEntry>)>;
 pub fn open(which: &WorldRoute, licensing: &Licensing) -> Result<Opened, String> {
     let mut file = WorldFile::open(&which.file, &licensing.trust()).map_err(|e| e.to_string())?;
     let licensee = licensing.unlock(&mut file);
-    let entry = file
-        .description()
-        .route(&which.route)
-        .ok_or_else(|| format!("the world has no route {}", which.route))?
-        .clone();
-    let points = file.route(&which.route).map_err(|e| e.to_string())?;
-    let origin = file.description().origin;
-    let name = display_name(file.description(), &entry.name);
-    let route = Route::from_world(
-        Some(name.clone()),
-        (origin.lat, origin.lon),
-        &points.points.iter().map(world_point).collect::<Vec<_>>(),
-    )
-    .map_err(|e| e.to_string())?;
-    let widths = widths(&route, &points.points);
+    let (route, widths, name) = route_of(&file, &which.route)?;
     let left = file.description().drives_on == DrivesOn::Left;
     let driving_left = vec![Some(left); route.points().len()];
     Ok((
@@ -194,6 +180,26 @@ pub fn open(which: &WorldRoute, licensing: &Licensing) -> Result<Opened, String>
         },
         name,
     ))
+}
+
+/// The route `id` of an open world file: as authored, the road's width at each of its points,
+/// and its name in the library.
+fn route_of(file: &WorldFile, id: &str) -> Result<(Route, Vec<f64>, String), String> {
+    let entry = file
+        .description()
+        .route(id)
+        .ok_or_else(|| format!("the world has no route {id}"))?;
+    let points = file.route(id).map_err(|e| e.to_string())?;
+    let origin = file.description().origin;
+    let name = display_name(file.description(), &entry.name);
+    let route = Route::from_world(
+        Some(name.clone()),
+        (origin.lat, origin.lon),
+        &points.points.iter().map(world_point).collect::<Vec<_>>(),
+    )
+    .map_err(|e| e.to_string())?;
+    let widths = widths(&route, &points.points);
+    Ok((route, widths, name))
 }
 
 fn world_point(point: &world::RoutePoint) -> WorldPoint {
@@ -315,7 +321,7 @@ fn routes_of(path: &Path, licensing: &Licensing) -> Result<Vec<CourseEntry>, Str
                 file: path.to_owned(),
                 route: entry.id.clone(),
             };
-            let (route, _, _, name) = open(&which, licensing)?;
+            let (route, _, name) = route_of(&file, &entry.id)?;
             Ok(CourseEntry {
                 path: which.path(),
                 manifest: manifest(description, entry, &route, name),

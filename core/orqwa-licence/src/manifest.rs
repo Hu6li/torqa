@@ -164,6 +164,48 @@ impl<R: Read> Read for Hashing<R> {
     }
 }
 
+/// The SHA-512 of everything written through it, passed on to `inner`.
+pub struct HashingWriter<W> {
+    inner: W,
+    context: aws_lc_rs::digest::Context,
+    written: u64,
+}
+
+impl<W: io::Write> HashingWriter<W> {
+    /// Hashes what is written to `inner`.
+    pub fn new(inner: W) -> Self {
+        Self {
+            inner,
+            context: aws_lc_rs::digest::Context::new(&aws_lc_rs::digest::SHA512),
+            written: 0,
+        }
+    }
+
+    /// The [`Entry`] for what was written.
+    #[must_use]
+    pub fn entry(self, encrypted: bool, plain_size: Option<u64>) -> Entry {
+        Entry {
+            size: self.written,
+            sha512: hex(self.context.finish().as_ref()),
+            encrypted,
+            plain_size,
+        }
+    }
+}
+
+impl<W: io::Write> io::Write for HashingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.context.update(&buf[..n]);
+        self.written += n as u64;
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 /// An [`Entry`] for these bytes.
 #[must_use]
 pub fn entry(bytes: &[u8], encrypted: bool, plain_size: Option<u64>) -> Entry {
