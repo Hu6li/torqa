@@ -531,9 +531,12 @@ export cannot write; tools building worlds can use it too.
 
 ```sh
 scripts/art.sh blender --background --factory-startup --python art/worlds/test_world.py
-scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-pack \
-    ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
+scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli --features dev-keys -- \
+    world-seal --dev ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
 ```
+
+The test world is sealed with the development key ([ADR 0043](../docs/adr/0043-signed-licensed-worlds.md)),
+which only debug and test builds trust.
 
 The road is built from the route's own points, so the rider rides on it, not above or in it
 (docs/world-files.md, Routes). The unpacked world in `worlds/build/` is not committed.

@@ -9,11 +9,12 @@ mod recorded_ride;
 mod ride_together;
 mod sample_rides;
 mod voice;
+mod worlds;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use orqwa_app::paths;
 use orqwa_devices::ble::Bluetooth;
@@ -97,13 +98,51 @@ enum Command {
     WorldCheck {
         /// The world file.
         file: PathBuf,
+        /// Also trust this root (`*.pub.json`), for roots not yet built into ORQWA.
+        #[arg(long)]
+        trust: Option<PathBuf>,
     },
-    /// Pack a folder holding a world's `world.json` and the parts it names into a world file,
-    /// and check it.
-    WorldPack {
-        /// The folder.
-        folder: PathBuf,
-        /// The world file to write.
+    /// Seal a folder holding a world's `world.json` and the parts it names into a signed world
+    /// file, encrypted for sale with `--content-key`, and check it.
+    WorldSeal(worlds::SealArgs),
+    /// Make a key (a root, a world key or an activation key), encrypted with
+    /// `ORQWA_KEY_PASSWORD`; its public half goes beside it as `*.pub.json`.
+    KeyNew {
+        /// Where to write the key.
+        out: PathBuf,
+    },
+    /// Let a root certify a world key or an activation key.
+    KeyCertify {
+        /// The root's key.
+        #[arg(long)]
+        root: PathBuf,
+        /// The public key to certify (`*.pub.json`).
+        #[arg(long)]
+        key: PathBuf,
+        /// What the key may sign.
+        #[arg(long, value_enum)]
+        purpose: worlds::KeyPurpose,
+        /// A name for people, such as "world key 2026-11".
+        #[arg(long)]
+        name: String,
+        /// Where to write the certificate.
+        out: PathBuf,
+    },
+    /// Let a root sign a list of withdrawn keys and worlds.
+    RevocationSign {
+        /// The root's key.
+        #[arg(long)]
+        root: PathBuf,
+        /// The list: `{"sequence": n, "keys": [...], "worlds": [{"id", "version"}]}`.
+        list: PathBuf,
+        /// Where to write the signed list.
+        out: PathBuf,
+    },
+    /// Make a world's content key. Secret: it goes to the activation server.
+    ContentKeyNew {
+        /// The key's id, such as "lake-biel-2026-11".
+        id: String,
+        /// Where to write it.
         out: PathBuf,
     },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
@@ -265,40 +304,20 @@ async fn main() -> Result<()> {
         Command::Detail { pbf, out, region } => detail(pbf, out, region).await,
         Command::BuildingCensus { pbf } => building_census(pbf).await,
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
-        Command::WorldCheck { file } => world_check(&file),
-        Command::WorldPack { folder, out } => {
-            orqwa_storage::world::pack(&folder, &out)
-                .with_context(|| format!("cannot pack {}", folder.display()))?;
-            world_check(&out)
-        }
+        Command::WorldCheck { file, trust } => worlds::check(&file, trust.as_deref()),
+        Command::WorldSeal(args) => worlds::seal(&args),
+        Command::KeyNew { out } => worlds::key_new(&out),
+        Command::KeyCertify {
+            root,
+            key,
+            purpose,
+            name,
+            out,
+        } => worlds::key_certify(&root, &key, purpose, &name, &out),
+        Command::RevocationSign { root, list, out } => worlds::revocation_sign(&root, &list, &out),
+        Command::ContentKeyNew { id, out } => worlds::content_key_new(&id, &out),
         Command::SampleRides(args) => sample_rides::write(&args),
     }
-}
-
-fn world_check(file: &std::path::Path) -> Result<()> {
-    let started = std::time::Instant::now();
-    let world = orqwa_storage::world::validate(file)
-        .with_context(|| format!("{} is not a valid world file", file.display()))?;
-    println!(
-        "{} {} — {}",
-        world.name,
-        world.version.as_deref().unwrap_or(""),
-        world.licence
-    );
-    println!(
-        "{} sections, {} assets, horizon: {}",
-        world.sections.len(),
-        world.assets.len(),
-        if world.horizon.is_some() { "yes" } else { "no" }
-    );
-    for route in &world.routes {
-        println!("route {}: {}", route.id, route.name);
-    }
-    for credit in &world.attribution {
-        println!("credit: {credit}");
-    }
-    println!("valid, checked in {:.1} s", started.elapsed().as_secs_f64());
-    Ok(())
 }
 
 #[allow(clippy::cast_precision_loss)] // megabytes shown to a tenth

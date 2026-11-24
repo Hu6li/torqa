@@ -297,7 +297,8 @@ runtime with the author's own materials — none of the name-based material cont
 apply. `art/worlds/test_world.py` builds the test world; `art/worlds/glb.py` adds
 `ORQWA_terrain_layers` to an exported `.glb`. Blender's axes (x east, y north, z up) export to
 the format's (x east, y up, −z north); place every part relative to its section's centre, build
-roads from the route's own points, and pack with `orqwa-cli world-pack` (it validates). Keep
+roads from the route's own points, and seal with `orqwa-cli world-seal` (it signs and
+validates; `--dev` with the development key while building, ADR 0043). Keep
 textures small: runtime glTF textures are uncompressed in video memory. Sellable worlds (Lake
 Biel) live in the private `ORQWA/orqwa-worlds` repository, never here.
 

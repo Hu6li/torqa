@@ -1280,10 +1280,11 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] ADR 0043: signed and licensed world files (R278–R281)
 - [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, revocation lists,
   chunked AES-256-GCM, device secret and activations; aws-lc-rs 1.19 as a direct dependency
-- [ ] Signature and hashes checked in `orqwa_storage::world`; encrypted parts read after
-  activation; fuzzer with the development root
-- [ ] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `world-seal`; the test world
-  sealed with the development root; CI refuses a release that trusts it
+- [x] Signature and hashes checked in `orqwa_storage::world`; encrypted parts read once
+  unlocked; the fuzzer reaches the parsers behind the signature
+- [x] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `content-key-new`,
+  `world-seal`; the test world sealed with the development key; `dev-keys` does not compile
+  without debug assertions
 - [ ] App and Godot: the activation client, locked worlds, **Activate** with a licence key,
   **Release this device**, the buyer named on the course page; the usage guide and server list
   in the wiki

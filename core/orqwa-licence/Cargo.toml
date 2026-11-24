@@ -8,8 +8,8 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-# Trusts the development root, whose private key is in this source: tests, the fuzzer and
-# worlds being built. Release builds never enable it (ADR 0043).
+# Trusts the development root, whose private key is in this source: tests and worlds being
+# built. Builds without debug assertions refuse to compile with it (ADR 0043).
 dev-keys = []
 
 [dependencies]

@@ -4,6 +4,7 @@ use std::io::Write as _;
 use std::sync::OnceLock;
 
 // The validator reads a file, as it does when a rider imports one; one file per process.
+// Mutated input never carries a valid signature, so the parsers behind it are fuzzed directly.
 fn path() -> &'static std::path::Path {
     static PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
     PATH.get_or_init(|| {
@@ -15,5 +16,5 @@ libfuzzer_sys::fuzz_target!(|data: &[u8]| {
     let mut file = std::fs::File::create(path()).expect("temporary world");
     file.write_all(data).expect("temporary world");
     drop(file);
-    let _ = orqwa_storage::world::validate(path());
+    let _ = orqwa_storage::world::validate_unsigned(path());
 });

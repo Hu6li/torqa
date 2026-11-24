@@ -9,10 +9,12 @@ profile="${1:-debug}"
 target="${2:-native}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# Debug and test builds open worlds sealed with the development keys, as the test world is;
+# release builds never do (ADR 0043).
 case "$profile" in
-    debug) cargo_flags="" ;;
+    debug) cargo_flags="--features dev-keys" ;;
     # Smoke tests share cargo test's optimized dependencies and retain debug assertions.
-    test) cargo_flags="--profile test" ;;
+    test) cargo_flags="--profile test --features dev-keys" ;;
     release) cargo_flags="--release" ;;
     *) echo "usage: $0 [debug|test|release] [windows]" >&2; exit 1 ;;
 esac
@@ -25,7 +27,7 @@ if [ "$target" = windows ]; then
     # FFmpeg as the image builds it for Windows; bindgen reads its headers as MinGW's compiler
     # would, with clang's own intrinsics. Linked statically, so the DLL needs no MinGW runtime
     # beside it.
-    # shellcheck disable=SC2086 # cargo_flags is intentionally empty or a single flag
+    # shellcheck disable=SC2086 # cargo_flags is intentionally split into its flags
     FFMPEG_DIR=/opt/ffmpeg-windows \
         CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
         CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc \
@@ -49,7 +51,7 @@ case "$(uname -s)" in
     *) echo "unsupported OS: $(uname -s)" >&2; exit 1 ;;
 esac
 
-# shellcheck disable=SC2086 # cargo_flags is intentionally empty or a single flag
+# shellcheck disable=SC2086 # cargo_flags is intentionally split into its flags
 cargo build --manifest-path "$root/core/Cargo.toml" -p orqwa-gd --locked $cargo_flags
 
 mkdir -p "$root/app/bin"

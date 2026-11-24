@@ -147,12 +147,18 @@ pub type Opened = (Route, Vec<Option<bool>>, Authored, String);
 /// What the library has read of each world file: its modification time, size and routes.
 type Read = HashMap<PathBuf, (SystemTime, u64, Vec<CourseEntry>)>;
 
+/// The roots and withdrawals world files are checked against (ADR 0043).
+#[must_use]
+pub fn trust() -> world::Trust {
+    world::Trust::builtin()
+}
+
 /// Opens the route `which` of a world file for riding.
 ///
 /// # Errors
 /// A readable message if the file or its route cannot be read.
 pub fn open(which: &WorldRoute) -> Result<Opened, String> {
-    let file = WorldFile::open(&which.file).map_err(|e| e.to_string())?;
+    let file = WorldFile::open(&which.file, &trust()).map_err(|e| e.to_string())?;
     let entry = file
         .description()
         .route(&which.route)
@@ -277,7 +283,7 @@ impl Library {
 
 /// Each route of the world file at `path`, as the library lists it.
 fn routes_of(path: &Path) -> Result<Vec<CourseEntry>, String> {
-    let file = WorldFile::open(path).map_err(|e| e.to_string())?;
+    let file = WorldFile::open(path, &trust()).map_err(|e| e.to_string())?;
     let description = file.description();
     let info = WorldInfo {
         world: description.name.clone(),
@@ -339,25 +345,27 @@ fn manifest(
 /// The picture of the world file at `path`, if it has one.
 #[must_use]
 pub fn preview(path: &Path) -> Option<Vec<u8>> {
-    let file = WorldFile::open(path).ok()?;
+    let file = WorldFile::open(path, &trust()).ok()?;
     let name = file.description().preview.clone()?;
     file.image(&name).ok()
 }
 
-/// Copies a checked world file into `dir`: a new version of a world already there (by its id)
-/// replaces it, under the same name. Returns where it is.
+/// Copies a world file into `dir` and checks the copy, so a file changed while it is copied
+/// never enters the library: a new version of a world already there (by its id) replaces it,
+/// under the same name. Returns where it is.
 ///
 /// # Errors
 /// A readable message if the file breaks the format or cannot be copied.
 pub fn import(from: &Path, dir: &Path) -> Result<PathBuf, String> {
-    let description = world::validate(from).map_err(|e| e.to_string())?;
+    let trust = trust();
+    let description = world::read_description(from, &trust).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let existing = std::fs::read_dir(dir)
         .map_err(|e| e.to_string())?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|p| p.extension().is_some_and(|e| e == world::EXTENSION))
-        .find(|p| world::read_description(p).is_ok_and(|d| d.id == description.id));
+        .find(|p| world::read_description(p, &trust).is_ok_and(|d| d.id == description.id));
     let to = existing.unwrap_or_else(|| {
         let slug = orqwa_storage::slug(&description.name, "world");
         let mut path = dir.join(format!("{slug}.{}", world::EXTENSION));
@@ -370,6 +378,19 @@ pub fn import(from: &Path, dir: &Path) -> Result<PathBuf, String> {
     });
     let partial = to.with_extension("oqx.part");
     std::fs::copy(from, &partial).map_err(|e| e.to_string())?;
+    let copied = world::validate(&partial, &trust)
+        .map_err(|e| e.to_string())
+        .and_then(|copied| {
+            if copied.id == description.id {
+                Ok(())
+            } else {
+                Err("the file changed while it was imported".to_owned())
+            }
+        });
+    if let Err(error) = copied {
+        let _ = std::fs::remove_file(&partial);
+        return Err(error);
+    }
     std::fs::rename(&partial, &to).map_err(|e| {
         let _ = std::fs::remove_file(&partial);
         e.to_string()

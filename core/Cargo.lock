@@ -2026,6 +2026,7 @@ version = "0.6.5"
 dependencies = [
  "orqwa-devices",
  "orqwa-domain",
+ "orqwa-licence",
  "orqwa-net",
  "orqwa-osm",
  "orqwa-physics",
@@ -2056,6 +2057,7 @@ dependencies = [
  "orqwa-app",
  "orqwa-devices",
  "orqwa-domain",
+ "orqwa-licence",
  "orqwa-net",
  "orqwa-osm",
  "orqwa-physics",
@@ -2067,6 +2069,8 @@ dependencies = [
  "orqwa-voice",
  "orqwa-workouts",
  "orqwa-world",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing-subscriber",
 ]
@@ -2097,6 +2101,7 @@ dependencies = [
  "orqwa-app",
  "orqwa-devices",
  "orqwa-domain",
+ "orqwa-licence",
  "orqwa-physics",
  "orqwa-routes",
  "orqwa-session",
@@ -2197,7 +2202,9 @@ name = "orqwa-storage"
 version = "0.6.5"
 dependencies = [
  "embedded-io-adapters",
+ "flate2",
  "orqwa-domain",
+ "orqwa-licence",
  "orqwa-world",
  "rusqlite",
  "rustyfit",

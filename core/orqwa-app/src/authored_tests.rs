@@ -97,7 +97,13 @@ fn world(dir: &Path, name: &str, version: &str, located: bool) -> PathBuf {
         .unwrap(),
     );
     let file = dir.join(format!("{name}-{version}.oqx"));
-    orqwa_storage::world::pack(&folder, &file).unwrap();
+    let key = orqwa_licence::dev::world_key();
+    let sealer = orqwa_storage::world::Sealer {
+        key: &key,
+        certificate: orqwa_licence::dev::world_certificate(),
+        content_key: None,
+    };
+    orqwa_storage::world::seal(&folder, &file, &sealer, &authored::trust()).unwrap();
     file
 }
 

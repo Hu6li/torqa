@@ -1963,8 +1963,9 @@ impl App {
             self.runtime.spawn_blocking(move || {
                 let result = authored::import(&path, &worlds)
                     .and_then(|file| {
-                        let description = orqwa_storage::world::read_description(&file)
-                            .map_err(|e| e.to_string())?;
+                        let description =
+                            orqwa_storage::world::read_description(&file, &authored::trust())
+                                .map_err(|e| e.to_string())?;
                         let first = description.routes.first().map(|r| r.id.clone());
                         Ok(first.map_or(file.clone(), |route| {
                             authored::WorldRoute { file, route }.path()
@@ -2275,7 +2276,7 @@ impl App {
                 .and_then(|xml| orqwa_video::incyclist::parse(&xml).ok())
                 .map(|route| route.title),
             "oqc" => course::read_manifest(path).ok().map(|m| m.name),
-            "oqx" => orqwa_storage::world::read_description(path)
+            "oqx" => orqwa_storage::world::read_description(path, &authored::trust())
                 .ok()
                 .map(|d| d.name),
             "rlv" => video::tacx_course_name(path),

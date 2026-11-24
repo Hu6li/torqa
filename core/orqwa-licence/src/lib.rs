@@ -12,6 +12,10 @@
 //! - encryption: AES-256-GCM in chunks, seekable ([`stream`]);
 //! - activation: a world's content key sealed for one device ([`activation`], [`device`]).
 
+// A release build trusting the development root would open worlds anyone can sign.
+#[cfg(all(feature = "dev-keys", not(debug_assertions)))]
+compile_error!("dev-keys is for development builds only: release builds must not trust it");
+
 pub mod activation;
 #[cfg(any(test, feature = "dev-keys"))]
 pub mod dev;
