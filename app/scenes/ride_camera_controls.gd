@@ -1,8 +1,9 @@
 class_name RideCameraControls
 extends RefCounted
 ## The ride's camera keys and their buttons: C the next camera, Shift + left and right round
-## the rider, Shift + up and down nearer and further (R276); the same as small buttons just
-## above the ride bar, which fold away with it while the keys keep working.
+## the rider, Shift + up and down nearer and further, or in first person looking round, up and
+## down (R276); the same as small buttons just above the ride bar, which fold away with it while
+## the keys keep working.
 
 var _world: RideWorld
 var _bar: RideBar
@@ -64,7 +65,10 @@ func _turn(step: int, further: bool) -> void:
 	if not _world_shown:
 		return
 	var view: String = tr(_world.turn_camera(step, further))
-	_tell.call((tr("Camera distance: %s") if further else tr("Camera: %s")) % view)
+	if _world.camera() == RideWorld.CameraMode.FIRST_PERSON:
+		_tell.call(tr("Looking: %s") % view)
+	else:
+		_tell.call((tr("Camera distance: %s") if further else tr("Camera: %s")) % view)
 
 
 func _show() -> void:

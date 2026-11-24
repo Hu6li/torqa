@@ -1,7 +1,8 @@
 extends SceneTree
 ## Headless checks of the ride's cameras (R276): chase and drone look at the rider from eight
 ## sides and three distances, chosen with Shift + arrows or the small buttons above the ride
-## bar, while the free camera keeps Shift + arrows for looking around (#78).
+## bar; first person looks round, up and down with them, and the free camera keeps them for
+## looking around (#78).
 ## Run: godot --headless --path app -s res://tests/camera_smoke.gd
 
 const MAIN_SCENE: String = "res://scenes/main.tscn"
@@ -15,6 +16,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_sides()
+	_first_person()
 	await _keys_and_buttons()
 	if not _failed:
 		print("CAMERA SMOKE TEST PASSED")
@@ -69,6 +71,30 @@ func _sides() -> void:
 				break
 
 
+## From the rider's eyes the head turns round in the same steps, and looks up and down.
+func _first_person() -> void:
+	var rider: Transform3D = Transform3D.IDENTITY
+	var eyes: RideCamera = RideCamera.new()
+	var mode: int = RideWorld.CameraMode.FIRST_PERSON
+	var ahead: Transform3D = eyes.target(mode, rider, INF)
+	_check((-ahead.basis.z).z < -0.99, "first person looks down the road")
+	_check(eyes.turn(mode, 2, false) == "Right", "two steps right")
+	var right: Vector3 = -eyes.target(mode, rider, INF).basis.z
+	_check(right.x > 0.99, "looks to the right: %s" % right)
+	_check(eyes.turn(mode, 2, false) == "Behind", "and on, behind")
+	var behind: Vector3 = -eyes.target(mode, rider, INF).basis.z
+	_check(behind.z > 0.99, "looks back: %s" % behind)
+	_check(eyes.turn(mode, -3, false) == "Ahead right", "back round to the left")
+	eyes.face_ahead()
+	var level: float = (-eyes.target(mode, rider, INF).basis.z).y
+	_check(eyes.turn(mode, -1, true) == "Up", "Shift + up looks up")
+	var up: float = (-eyes.target(mode, rider, INF).basis.z).y
+	_check(eyes.turn(mode, 2, true) == "Down", "Shift + down looks down")
+	var down: float = (-eyes.target(mode, rider, INF).basis.z).y
+	_check(down < level and level < up, "down, level, up: %f %f %f" % [down, level, up])
+	_check(eyes.angle == 0 and eyes.distance == 1, "chase and drone keep their side")
+
+
 ## Shift + arrows and the buttons through the running app, and the free camera's own use of them.
 func _keys_and_buttons() -> void:
 	var main: Control = (load(MAIN_SCENE) as PackedScene).instantiate()
@@ -79,14 +105,18 @@ func _keys_and_buttons() -> void:
 	ride.show()
 	var world: RideWorld = main.get_node("World")
 	world.show()
+	var view: RideCamera = world.get("_view")
 	world.set_camera(RideWorld.CameraMode.FIRST_PERSON)
 	await _press(KEY_RIGHT)
-	_check(world.camera() == RideWorld.CameraMode.CHASE, "from first person to chase")
+	_check(world.camera() == RideWorld.CameraMode.FIRST_PERSON, "first person stays")
+	_check(view.look == 1 and world.camera_angle() == 0, "and looks to the right instead")
+	world.set_camera(RideWorld.CameraMode.CHASE)
+	_check(view.look == 0, "it looks ahead again next time")
+	await _press(KEY_RIGHT)
 	_check(world.camera_angle() == 1, "Shift + right goes round to the right")
 	await _press(KEY_LEFT)
 	await _press(KEY_LEFT)
 	_check(world.camera_angle() == 7, "Shift + left goes round past behind")
-	var view: RideCamera = world.get("_view")
 	await _press(KEY_UP)
 	_check(view.distance == 0, "Shift + up brings it nearer")
 	await _press(KEY_DOWN)

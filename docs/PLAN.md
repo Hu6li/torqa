@@ -458,7 +458,8 @@ Built in rideable steps:
   icon and tooltip that follow the window when switched by the keyboard or settings too
 - [x] Chase and drone from eight sides, 45° apart, near, normal or far (R276): Shift + left and
   right go round the rider, Shift + up and down nearer and further; small buttons above the
-  ride bar do the same, and the side is a ride option; the free camera keeps Shift + arrows
+  ride bar do the same, and the side is a ride option; first person looks round, up and down
+  with them; the free camera keeps Shift + arrows
 - [x] Escape leaves full screen first on every page, then goes back; the remote's Back keeps
   full screen (R177, #439)
 - [x] Hide the mouse pointer after three idle seconds during rides and workouts showing a

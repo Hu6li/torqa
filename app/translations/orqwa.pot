@@ -379,6 +379,18 @@ msgstr ""
 msgid "Age"
 msgstr ""
 
+#: app/scenes/ride_camera.gd
+msgid "Ahead"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Ahead left"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Ahead right"
+msgstr ""
+
 #: app/ui/video_align_dialog.gd
 msgid "Align"
 msgstr ""
@@ -668,19 +680,19 @@ msgid "Camera distance: %s"
 msgstr ""
 
 #: app/ui/camera_bar.gd
-msgid "Camera further away (Shift + ↓)"
+msgid "Camera further away, or look down (Shift + ↓)"
 msgstr ""
 
 #: app/ui/camera_bar.gd
-msgid "Camera nearer (Shift + ↑)"
+msgid "Camera nearer, or look up (Shift + ↑)"
 msgstr ""
 
 #: app/ui/camera_bar.gd
-msgid "Camera round to the left (Shift + ←)"
+msgid "Camera round to the left, or look left (Shift + ←)"
 msgstr ""
 
 #: app/ui/camera_bar.gd
-msgid "Camera round to the right (Shift + →)"
+msgid "Camera round to the right, or look right (Shift + →)"
 msgstr ""
 
 #: app/ui/ride_bar.gd
@@ -1353,6 +1365,10 @@ msgstr ""
 
 #: app/scenes/button_dialog.gd
 msgid "Double press"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Down"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -2187,6 +2203,10 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
+#: app/scenes/ride_camera.gd
+msgid "Level"
+msgstr ""
+
 #: app/ui/about_page.gd
 msgid "Licences"
 msgstr ""
@@ -2229,6 +2249,10 @@ msgstr ""
 
 #: app/scenes/workouts_tab.gd
 msgid "Looking up today's plan…"
+msgstr ""
+
+#: app/scenes/ride_camera_controls.gd
+msgid "Looking: %s"
 msgstr ""
 
 #: app/ui/group_notices.gd
@@ -3905,6 +3929,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Unmute %s"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Up"
 msgstr ""
 
 #: app/scenes/button_dialog.gd

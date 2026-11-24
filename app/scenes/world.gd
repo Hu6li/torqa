@@ -325,20 +325,19 @@ func camera_angle() -> int:
 
 
 ## Takes the camera `step` sides round the rider, positive towards their right, or `step`
-## distances further (nearer if negative), and returns the new side's or distance's name. First
-## person and the free camera give way to chase, or to the drone they left.
+## distances further (nearer if negative), and returns the new side's or distance's name; first
+## person looks round instead, or down (up if negative). The free camera gives way to the drone
+## it left.
 func turn_camera(step: int, further: bool = false) -> String:
-	if _camera_mode == CameraMode.FIRST_PERSON or _free:
-		set_camera(CameraMode.CHASE if _camera_mode == CameraMode.FIRST_PERSON else _camera_mode)
-	if further:
-		_view.distance += step
-		return RideCamera.DISTANCE_NAMES[_view.distance]
-	_view.angle += step
-	return RideCamera.ANGLES[_view.angle]
+	if _free:
+		set_camera(_camera_mode)
+	return _view.turn(_camera_mode, step, further)
 
 
 ## Switches to camera `mode` (`CameraMode`).
 func set_camera(mode: int) -> void:
+	if mode != _camera_mode:
+		_view.face_ahead()
 	_free = false
 	_camera_mode = clampi(mode, 0, CameraMode.size() - 1) as CameraMode
 	# From the rider's own eyes only the bike is visible.

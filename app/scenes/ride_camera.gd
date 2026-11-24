@@ -1,7 +1,8 @@
 class_name RideCamera
 extends RefCounted
-## Where the ride's camera stands for the rider: their eyes in first person; behind them for
-## chase and drone, or from one of eight sides 45° apart and nearer or further (R276).
+## Where the ride's camera stands for the rider: their eyes in first person, looking down the
+## road or round, up and down; behind them for chase and drone, or from one of eight sides 45°
+## apart and nearer or further (R276).
 
 ## The sides, from behind round by the rider's right, as an index of `ANGLES`.
 # i18n-begin
@@ -16,9 +17,24 @@ const ANGLES: Array[String] = [
 	"Behind left",
 ]
 const DISTANCE_NAMES: Array[String] = ["Near", "Normal", "Far"]
+## Where first person looks, turning right in steps as `ANGLES`, and how far up (of `TILTS`).
+const LOOKS: Array[String] = [
+	"Ahead",
+	"Ahead right",
+	"Right",
+	"Behind right",
+	"Behind",
+	"Behind left",
+	"Left",
+	"Ahead left",
+]
+const TILT_NAMES: Array[String] = ["Down", "Level", "Up"]
 # i18n-end
 ## How far chase and drone stand off, as factors of their usual distance and height.
 const DISTANCES: Array[float] = [0.6, 1.0, 1.7]
+## How far first person looks up from looking down the road, in radians: down at the road just
+## ahead, along it, or up at the hills.
+const TILTS: Array[float] = [-0.45, 0.0, 0.35]
 ## A new side or distance is reached at this rate (1 / seconds), the camera swinging round the
 ## rider rather than cutting through them.
 const SMOOTHING: float = 4.0
@@ -31,9 +47,42 @@ var angle: int = 0:
 var distance: int = 1:
 	set(value):
 		distance = clampi(value, 0, DISTANCES.size() - 1)
-## Where the camera is on its way to `angle` (radians) and `distance` (a factor).
+## Where first person looks (of `LOOKS`) and how far up (of `TILTS`).
+var look: int = 0:
+	set(value):
+		look = posmod(value, LOOKS.size())
+var tilt: int = 1:
+	set(value):
+		tilt = clampi(value, 0, TILTS.size() - 1)
+## Where the camera is on its way to `angle` (radians) and `distance` (a factor), and first
+## person's turn and tilt (radians).
 var _orbit: float = 0.0
 var _reach: float = 1.0
+var _turn: float = 0.0
+var _lift: float = 0.0
+
+
+## Takes the camera `step` sides round the rider, or `step` distances further if `further`, and
+## returns the new side's or distance's name; in first person it looks `step` steps to the right
+## instead, or `step` steps down.
+func turn(mode: int, step: int, further: bool) -> String:
+	if mode == RideWorld.CameraMode.FIRST_PERSON:
+		if further:
+			tilt -= step
+			return TILT_NAMES[tilt]
+		look += step
+		return LOOKS[look]
+	if further:
+		distance += step
+		return DISTANCE_NAMES[distance]
+	angle += step
+	return ANGLES[angle]
+
+
+## First person looks down the road again.
+func face_ahead() -> void:
+	look = 0
+	tilt = 1
 
 
 ## The camera for `mode` (`RideWorld.CameraMode`) and a rider at `rider`, `delta` seconds after
@@ -42,12 +91,18 @@ func target(mode: int, rider: Transform3D, delta: float) -> Transform3D:
 	var forward: Vector3 = -rider.basis.z
 	var flat_forward: Vector3 = Vector3(forward.x, 0.0, forward.z).normalized()
 	var origin: Vector3 = rider.origin
-	if mode == RideWorld.CameraMode.FIRST_PERSON:
-		# The rider's eyes, slightly ahead of the helmet, looking down the road.
-		var eyes: Vector3 = rider * Vector3(0, 1.56, -0.5)
-		var ahead: Vector3 = eyes + forward * 20.0 - Vector3.UP * 1.5
-		return Transform3D(Basis.IDENTITY, eyes).looking_at(ahead, Vector3.UP)
 	var weight: float = 1.0 - exp(-delta * SMOOTHING)
+	if mode == RideWorld.CameraMode.FIRST_PERSON:
+		# The rider's eyes, slightly ahead of the helmet, looking down the road, or turning the
+		# head round, up and down.
+		_turn = lerp_angle(_turn, look * TAU / LOOKS.size(), weight)
+		_lift = lerpf(_lift, TILTS[tilt], weight)
+		var eyes: Vector3 = rider * Vector3(0, 1.56, -0.5)
+		var ahead: Vector3 = forward.rotated(Vector3.UP, -_turn) * 20.0
+		var up: float = 20.0 * tan(_lift) - 1.5
+		return Transform3D(Basis.IDENTITY, eyes).looking_at(
+			eyes + ahead + Vector3.UP * up, Vector3.UP
+		)
 	_orbit = lerp_angle(_orbit, angle * TAU / ANGLES.size(), weight)
 	_reach = lerpf(_reach, DISTANCES[distance], weight)
 	var right: Vector3 = flat_forward.cross(Vector3.UP)

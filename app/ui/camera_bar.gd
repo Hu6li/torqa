@@ -1,8 +1,9 @@
 class_name CameraBar
 extends PanelContainer
 ## Small buttons above the ride bar for the camera (R276): the next camera, round the rider to
-## their left or right, nearer and further. They do what C and Shift + arrows do, for riders
-## with a mouse or a touch screen rather than a keyboard at hand.
+## their left or right, nearer and further; in first person, looking round, up and down. They do
+## what C and Shift + arrows do, for riders with a mouse or a touch screen rather than a keyboard
+## at hand.
 
 ## The next camera was asked for (C).
 signal camera_requested
@@ -23,16 +24,26 @@ func _init() -> void:
 	add_child(row)
 	_add(row, "camera", tr("Next camera (C)"), camera_requested.emit)
 	_add(
-		row, "orbit_left", tr("Camera round to the left (Shift + ←)"), orbit_requested.emit.bind(-1)
+		row,
+		"orbit_left",
+		tr("Camera round to the left, or look left (Shift + ←)"),
+		orbit_requested.emit.bind(-1)
 	)
 	_add(
 		row,
 		"orbit_right",
-		tr("Camera round to the right (Shift + →)"),
+		tr("Camera round to the right, or look right (Shift + →)"),
 		orbit_requested.emit.bind(1)
 	)
-	_add(row, "nearer", tr("Camera nearer (Shift + ↑)"), distance_requested.emit.bind(-1))
-	_add(row, "further", tr("Camera further away (Shift + ↓)"), distance_requested.emit.bind(1))
+	_add(
+		row, "nearer", tr("Camera nearer, or look up (Shift + ↑)"), distance_requested.emit.bind(-1)
+	)
+	_add(
+		row,
+		"further",
+		tr("Camera further away, or look down (Shift + ↓)"),
+		distance_requested.emit.bind(1)
+	)
 
 
 static func _add(row: HBoxContainer, icon: String, tooltip: String, action: Callable) -> void:
