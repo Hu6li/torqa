@@ -92,9 +92,9 @@ preview.png                the library's picture
   `courses/`. Importing checks the whole file before copying it in. The library lists one
   entry per route; deleting one deletes the world with all its routes, after naming them.
 - **Not shared from ORQWA.** Worlds are to be sold. ORQWA offers no export, and world routes
-  cannot be chosen for group rides. A file is a file, so ORQWA cannot stop copies: no DRM,
-  which a GPL program could not enforce anyway. `publisher` and `licence` say whose a world
-  is. Signed packages that prove where a world comes from could come with a later format.
+  cannot be chosen for group rides. `publisher` and `licence` say whose a world is. ORQWA opens
+  only worlds the maintainers signed, and sold worlds are encrypted and activated per device
+  ([ADR 0043](0043-signed-licensed-worlds.md)).
 - **Assets of worlds are not ORQWA's assets.** R47 (assets redistributable with the GPL
   program) covers what ORQWA ships. A world file carries its own licence and attribution, which
   the course page shows.
@@ -145,3 +145,8 @@ horizon by a fixed height created visible cliffs at the covered area's edge; dra
 same water footprint in terrain and water meshes also caused depth fighting. Authors must
 give land and water separate footprints with matching shoreline heights. The format stays
 version 1; the optional metadata requires the updated viewer to switch backgrounds.
+**Amendment (2026-11-24, R278–R281, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
+gains `manifest.json` and `signature.json`. ORQWA opens only world files signed by the
+maintainers. Parts other than `world.json`, `preview.png` and the routes may be encrypted, and
+a device activated with a licence key opens them, on at most 5 devices per purchase. Stage 3's
+editor stays with the maintainers.

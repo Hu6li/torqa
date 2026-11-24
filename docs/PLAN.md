@@ -1258,7 +1258,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - **Exit:** riders behind separate routers join deliberately, ride together and continue alone
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
-### Phase 14 — Authored worlds (R268–R271, #433, [ADR 0042](adr/0042-world-files.md))
+### Phase 14 — Authored worlds (R268–R281, #433, [ADR 0042](adr/0042-world-files.md), [ADR 0043](adr/0043-signed-licensed-worlds.md))
 
 Worlds built outside ORQWA, ridden as they are ([world-files.md](world-files.md)). Stage 1 is
 the format and riding it; the realistic Lake Biel world is built in a private repository.
@@ -1277,6 +1277,18 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] Explicit diffuse-only materials for dry surfaces, including terrain layers (R274)
 - [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R275)
 - [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R276–R277)
+- [x] ADR 0043: signed and licensed world files (R278–R281)
+- [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, revocation lists,
+  chunked AES-256-GCM, device secret and activations; aws-lc-rs 1.19 as a direct dependency
+- [ ] Signature and hashes checked in `orqwa_storage::world`; encrypted parts read after
+  activation; fuzzer with the development root
+- [ ] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `world-seal`; the test world
+  sealed with the development root; CI refuses a release that trusts it
+- [ ] App and Godot: the activation client, locked worlds, **Activate** with a licence key,
+  **Release this device**, the buyer named on the course page; the usage guide and server list
+  in the wiki
+- [ ] Activation server (private repository) and the shop page
+- [ ] Premium video courses in world files (R281): FFmpeg reading decrypted, seekable entries
 - [ ] Stage 2 (private repository): Twann – Chasseral around Lake Biel from swisstopo data
 - [ ] Stage 3: an editor; `.oqc` courses as a starting point
 - **Exit:** a rider imports a world file and rides each of its routes offline, as authored
