@@ -161,6 +161,27 @@ then per group:
 
 Matrices may rotate and scale but not shear. A file ends after its last group.
 
+### Optional close scenery on Ultra
+
+A section's nearest glTF scene can reference a cosmetic detail group in its root metadata:
+
+```json
+"extras": {"ORQWA_ultra_details": {"asset": "details-village-12", "range_m": 140}}
+```
+
+`asset` names an entry in `world.json`'s `assets`; its first `.glb` is the complete detail
+scene, with one node per small object. This asset is reserved for the detail group and is
+not placed in an `instances` file. It is therefore validated and read through the same
+bounded, offline part reader as other assets. `range_m` defaults to 120 m and must be finite
+and between 5 and 250 m. Unlisted assets, invalid ranges and duplicate ownership are ignored.
+
+Only the **Ultra preset** loads the group, around sections showing their nearest level.
+Each object's bounds have the given short visibility range and a final fade. Moving away,
+unloading its section or choosing a lighter preset frees the added geometry and textures;
+view-distance overrides do not enable it. Essential terrain, roads, safety barriers and
+landmarks belong in ordinary sections/assets. Older viewers ignore this optional metadata
+and show the ordinary world. This addition retains format 1.
+
 ## Routes
 
 ```json

@@ -1294,6 +1294,7 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] Explicit diffuse-only materials for dry surfaces, including terrain layers (R288)
 - [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R289)
 - [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R290–R291)
+- [x] Optional close authored scenery loads only on Ultra, fades per object and releases on movement/downgrade (R292)
 - [ ] Stage 2 (private repository): Twann – Chasseral around Lake Biel from swisstopo data
 - [ ] Stage 3: an editor; `.oqc` courses as a starting point
 - **Exit:** a rider imports a world file and rides each of its routes offline, as authored

@@ -145,3 +145,12 @@ horizon by a fixed height created visible cliffs at the covered area's edge; dra
 same water footprint in terrain and water meshes also caused depth fighting. Authors must
 give land and water separate footprints with matching shoreline heights. The format stays
 version 1; the optional metadata requires the updated viewer to switch backgrounds.
+
+**Amendment (2026-11-24, R292).** A nearest section scene may name an optional close-detail
+asset through root `extras.ORQWA_ultra_details`. The existing manifest asset list bounds and
+validates its file, avoiding a second unvalidated resource path or a world-format change.
+The viewer imports this asset as a scene containing small objects, rather than an instanced
+model. Only Ultra requests it. The section's normal content remains independent, and the
+viewer releases the optional scene when it leaves close range or the preset changes.
+Per-object visibility ranges with fades avoid a whole section's clutter switching at once.
+Older viewers ignore the metadata. Authored and generated world storage layouts do not change.
