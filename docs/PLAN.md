@@ -1292,9 +1292,9 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [ ] The activation server's real address in place of `activate.orqwa.invalid` (before release)
 - [ ] Activation server (private repository) and the shop page
 - [ ] Premium video courses in world files (R281): FFmpeg reading decrypted, seekable entries
-- [ ] Demo world (ADR 0043): **Get the demo world** on Courses downloads the openly licensed,
-  signed, unencrypted Twann – Chasseral world from ORQWA's GitHub releases (resumable, checked
-  like an import); a newer ORQWA may offer a newer demo; requirement and usage guide with it
+- [ ] Demo world (ADR 0043): the openly licensed, signed, unencrypted Twann – Chasseral world,
+  linked from the website and release pages for riders to download and import; no code in
+  ORQWA. The usage guide says where to get it once it is published
 - [ ] Stage 2 (private repository): Twann – Chasseral from swisstopo data, the demo world above;
   the private repository's Lake Biel world is renamed to Twann – Chasseral (owner)
 - [ ] Stage 3: an editor; `.oqc` courses as a starting point
