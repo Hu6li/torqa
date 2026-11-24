@@ -1,6 +1,7 @@
 class_name RideOptions
 extends GridContainer
-## The options of a ride that can be set before and changed during it (R48): camera, trainer
+## The options of a ride that can be set before and changed during it (R48): camera and the side
+## it looks from (R276), trainer
 ## difficulty, descents, time of day, weather and season. Shared by the course page and
 ## the in-ride settings, so options are set the same way in both places. On video courses
 ## the video is the view, so camera, time, weather and season are hidden (R17) and the video's
@@ -21,6 +22,7 @@ const FIELD_WIDTH: float = 180.0
 
 var _orqwa: OrqwaApp
 var _camera: OptionButton = OptionButton.new()
+var _camera_angle: OptionButton = OptionButton.new()
 var _difficulty: HSlider = HSlider.new()
 var _difficulty_label: Label = Label.new()
 var _flat_descents: CheckBox = CheckBox.new()
@@ -48,6 +50,8 @@ func _init() -> void:
 	add_theme_constant_override("v_separation", 8)
 	for camera_name: String in RideWorld.camera_names():
 		_camera.add_item(camera_name)
+	for angle_name: String in RideCamera.ANGLES:
+		_camera_angle.add_item(angle_name)
 	_difficulty.min_value = 0.0
 	_difficulty.max_value = 100.0
 	_difficulty.step = 5.0
@@ -65,6 +69,7 @@ func _init() -> void:
 		_season.add_item(season)
 	# i18n-begin
 	_row("Camera", _camera, null, true)
+	_row("Camera angle", _camera_angle, null, true)
 	_row("Trainer difficulty", _difficulty, _difficulty_label, false, false, true)
 	_row("Descents", _flat_descents, null)
 	_row("Time of day", _time, null, true)
@@ -95,7 +100,7 @@ func _init() -> void:
 	show_voice(false, 60.0)
 	_wind_volume.tooltip_text = tr("Wind and rain volume; 0 mutes them")
 	_bike_volume.tooltip_text = tr("Chain, freewheel and gear shift volume; 0 mutes them")
-	for option: OptionButton in [_camera, _time, _weather, _season]:
+	for option: OptionButton in [_camera, _camera_angle, _time, _weather, _season]:
 		option.item_selected.connect(func(_index: int) -> void: _changed())
 	_difficulty.value_changed.connect(func(_value: float) -> void: _changed())
 	_flat_descents.toggled.connect(func(_on: bool) -> void: _changed())
@@ -107,12 +112,14 @@ func _init() -> void:
 	_update_labels()
 
 
-## The current options: `{camera, difficulty, flat_descents, time, weather, season, video_sound}`;
+## The current options: `{camera, camera_angle, difficulty, flat_descents, time, weather, season,
+## video_sound}`; `camera_angle` is an index of `RideCamera.ANGLES`;
 ## `time` and `weather` are names known to `RideWorld`; `wind_volume` and `bike_volume`
 ## are independent percentages, with zero to mute.
 func options() -> Dictionary:
 	return {
 		"camera": _camera.selected,
+		"camera_angle": _camera_angle.selected,
 		"difficulty": _difficulty.value,
 		"flat_descents": _flat_descents.button_pressed,
 		"time": _time.get_item_text(_time.selected),
@@ -160,6 +167,7 @@ func set_default_volumes() -> void:
 ## Shows `options` (as `options()` returns them) without emitting `changed`.
 func set_options(options: Dictionary) -> void:
 	var camera_mode: int = options.get("camera", 0)
+	var camera_angle: int = options.get("camera_angle", 0)
 	var difficulty: float = options.get("difficulty", 50.0)
 	var flat_descents: bool = options.get("flat_descents", false)
 	var time: String = options.get("time", "Midday")
@@ -169,6 +177,7 @@ func set_options(options: Dictionary) -> void:
 	var wind_volume: float = options.get("wind_volume", 50.0)
 	var bike_volume: float = options.get("bike_volume", 50.0)
 	_camera.select(camera_mode)
+	_camera_angle.select(camera_angle)
 	_difficulty.set_value_no_signal(difficulty)
 	_flat_descents.set_pressed_no_signal(flat_descents)
 	_select_text(_time, time)
@@ -209,7 +218,13 @@ func _changed() -> void:
 	changed.emit()
 
 
+## First person looks from the rider's eyes, on no side.
+func _show_camera_angle() -> void:
+	_camera_angle.disabled = _camera.selected == RideWorld.CameraMode.FIRST_PERSON
+
+
 func _update_labels() -> void:
+	_show_camera_angle()
 	_difficulty_label.text = "%d %%" % roundi(_difficulty.value)
 	_wind_label.text = "%d %%" % roundi(_wind_volume.value)
 	_bike_label.text = "%d %%" % roundi(_bike_volume.value)

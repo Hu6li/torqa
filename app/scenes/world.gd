@@ -223,6 +223,7 @@ var _building_detail_streaming: BuildingDetailStreaming = BuildingDetailStreamin
 ## Invalidates a preparation waiting on chunks that a new course or setting replaced.
 var _chunk_revision: int = 0
 var _camera_mode: CameraMode = CameraMode.CHASE
+var _view: RideCamera = RideCamera.new()
 var _sky: ShaderMaterial = ShaderMaterial.new()
 var _cloud_offset: Vector2 = Vector2.ZERO
 var _quality: Dictionary = QUALITY["medium"]
@@ -316,6 +317,24 @@ static func camera_names() -> PackedStringArray:
 ## The current camera mode (`CameraMode`).
 func camera() -> int:
 	return _camera_mode
+
+
+## The side chase and drone look from, an index of `RideCamera.ANGLES` (R276).
+func camera_angle() -> int:
+	return _view.angle
+
+
+## Takes the camera `step` sides round the rider, positive towards their right, or `step`
+## distances further (nearer if negative), and returns the new side's or distance's name. First
+## person and the free camera give way to chase, or to the drone they left.
+func turn_camera(step: int, further: bool = false) -> String:
+	if _camera_mode == CameraMode.FIRST_PERSON or _free:
+		set_camera(CameraMode.CHASE if _camera_mode == CameraMode.FIRST_PERSON else _camera_mode)
+	if further:
+		_view.distance += step
+		return RideCamera.DISTANCE_NAMES[_view.distance]
+	_view.angle += step
+	return RideCamera.ANGLES[_view.angle]
 
 
 ## Switches to camera `mode` (`CameraMode`).
@@ -493,9 +512,10 @@ func _apply_options_over_preset(options: Dictionary) -> void:
 		_quality["render_scale"] = float(render_scale) / 100.0
 
 
-## Applies ride options (`RideOptions.options()`): camera, time of day and weather.
+## Applies ride options (`RideOptions.options()`): camera and its side, time of day and weather.
 func apply_options(options: Dictionary) -> void:
 	_seasons.apply_options(self, _orqwa, _terrain_material, options)
+	_view.angle = options.get("camera_angle", _view.angle)
 	var winter_clothing: bool = _seasons.season in ["Autumn", "Winter"]
 	_avatar.winter_clothing = winter_clothing
 	_ghost.winter_clothing = winter_clothing
@@ -803,7 +823,9 @@ func _follow_ride(state: Dictionary, delta: float) -> void:
 
 	if _free:
 		return
-	var target: Transform3D = _camera_target(_rider.transform)
+	var target: Transform3D = _view.target(
+		_camera_mode, _rider.transform, delta if _placed else INF
+	)
 	# First person is fixed to the head; smoothing its position would trail behind the rider.
 	if _placed and _camera_mode != CameraMode.FIRST_PERSON:
 		var camera_weight: float = 1.0 - exp(-delta * CAMERA_SMOOTHING)
@@ -955,23 +977,3 @@ func _leaning(lean: float, target: float, delta: float) -> float:
 	if not _placed:
 		return target
 	return lerpf(lean, target, 1.0 - exp(-delta * LEAN_SMOOTHING))
-
-
-func _camera_target(rider: Transform3D) -> Transform3D:
-	var forward: Vector3 = -rider.basis.z
-	var flat_forward: Vector3 = Vector3(forward.x, 0.0, forward.z).normalized()
-	var origin: Vector3 = rider.origin
-	var eye: Vector3
-	var look_at: Vector3
-	match _camera_mode:
-		CameraMode.FIRST_PERSON:
-			# The rider's eyes, slightly ahead of the helmet, looking down the road.
-			eye = rider * Vector3(0, 1.56, -0.5)
-			look_at = eye + forward * 20.0 - Vector3.UP * 1.5
-		CameraMode.DRONE:
-			eye = origin - flat_forward * 28.0 + Vector3.UP * 20.0
-			look_at = origin + flat_forward * 10.0
-		_:
-			eye = origin - flat_forward * 6.5 + Vector3.UP * 2.6
-			look_at = origin + flat_forward * 10.0 + Vector3.UP * 1.0
-	return Transform3D(Basis.IDENTITY, eye).looking_at(look_at, Vector3.UP)

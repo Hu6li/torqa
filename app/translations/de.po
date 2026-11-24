@@ -355,6 +355,54 @@ msgstr "Kamera, Trainer-Schwierigkeit, Wetter, HUD; beenden oder abbrechen (Tast
 msgid "Camera: %s"
 msgstr "Kamera: %s"
 
+msgid "Behind"
+msgstr "Hinten"
+
+msgid "Behind left"
+msgstr "Hinten links"
+
+msgid "Behind right"
+msgstr "Hinten rechts"
+
+msgid "Camera angle"
+msgstr "Kamerawinkel"
+
+msgid "Camera distance: %s"
+msgstr "Kameraabstand: %s"
+
+msgid "Camera further away (Shift + ↓)"
+msgstr "Kamera weiter weg (Shift + ↓)"
+
+msgid "Camera nearer (Shift + ↑)"
+msgstr "Kamera näher (Shift + ↑)"
+
+msgid "Camera round to the left (Shift + ←)"
+msgstr "Kamera links herum (Shift + ←)"
+
+msgid "Camera round to the right (Shift + →)"
+msgstr "Kamera rechts herum (Shift + →)"
+
+msgid "Front"
+msgstr "Vorne"
+
+msgid "Front left"
+msgstr "Vorne links"
+
+msgid "Front right"
+msgstr "Vorne rechts"
+
+msgid "Left"
+msgstr "Links"
+
+msgid "Next camera (C)"
+msgstr "Nächste Kamera (C)"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Right"
+msgstr "Rechts"
+
 msgid "Cancel"
 msgstr "Abbrechen"
 
