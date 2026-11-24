@@ -136,3 +136,12 @@ shadows, normals and vertex colours; terrain layers carry the same response. The
 is optional glTF metadata; older viewers ignore it without rejecting the file. Existing
 materials retain their PBR response. Authors must use consistent albedo and lighting across
 tree LODs: swapping a lit near tree for a separately graded unlit atlas changes its colour.
+
+**Amendment (2026-11-24, R275).** Optional node metadata `extras.ORQWA_section` links a
+horizon subtree to its zero-based section index. The viewer shows it only while that section
+is unloaded, including when the horizon arrives after detailed terrain. This allows exact
+coarse background copies and stitched, non-overlapping outer terrain. Burying an overlapping
+horizon by a fixed height created visible cliffs at the covered area's edge; drawing the
+same water footprint in terrain and water meshes also caused depth fighting. Authors must
+give land and water separate footprints with matching shoreline heights. The format stays
+version 1; the optional metadata requires the updated viewer to switch backgrounds.

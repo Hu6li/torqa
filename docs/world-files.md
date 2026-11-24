@@ -118,10 +118,13 @@ UTF-8 bytes without control characters. The library shows their codes and names 
 for country search, filters and groups. ORQWA fetches nothing to infer them. Omission or an
 empty list means unknown; routes of a world with `origin.located: false` must omit them or
 use an empty list. Existing format-1 files without this metadata still open.
+Single-country world cards show the localized country name directly, with the code on hover.
 
 World-file routes appear under the library's **World** type, separately from generated **3D**
 and **Video** courses. Their cards carry a **World** pill beside the name, matching the
 **Video** pill. `preview.png` keeps its aspect ratio, with rounded image corners.
+Use 1072 × 640 pixels to fill a standard course card like an imported GPX map; other aspect
+ratios remain supported.
 
 ### Sections and levels of detail
 
@@ -212,6 +215,20 @@ material. Alpha modes work as glTF defines them; use `MASK` for leaves and fence
 material's base colour texture gets mipmaps that keep its cover: each smaller level holds as
 much of its area at or above `alphaCutoff` as the full image, so scattered leaves do not thin
 out and vanish as a tree shrinks on screen.
+
+### Section backgrounds in the horizon
+
+A horizon may include coarse terrain for sections that are outside the current view range.
+On a glTF **node**, `"extras": { "ORQWA_section": 0 }` associates that node's subtree with
+the zero-based index in `world.json`'s `sections` array. ORQWA hides the group while the
+corresponding section is shown, and restores it when that section unloads. Arrival order
+does not matter. Unlinked horizon nodes remain visible; invalid links are ignored.
+
+Use the section's exact coarse geometry and boundary heights. Cut the outer landscape to
+the actual section footprints and stitch its boundary vertices; do not lower overlapping
+terrain to hide it, as the transition becomes a visible cliff. Land and water should have
+disjoint footprints and shared shoreline heights, avoiding coplanar water/terrain flicker.
+This optional application metadata needs the updated viewer; older viewers ignore it.
 
 ### Diffuse surfaces
 

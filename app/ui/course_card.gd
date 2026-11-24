@@ -73,7 +73,7 @@ func _init(course: Dictionary, imperial: bool) -> void:
 		var seconds: float = course["estimated_s"]
 		add_figure(grid, TranslationServer.translate("Time estimate"), estimate(seconds))
 	var countries: Array = course.get("countries", [])
-	_add_countries(grid, countries)
+	_add_countries(grid, countries, not world.is_empty())
 	rows.add_child(grid)
 	add_child(rows)
 
@@ -141,9 +141,8 @@ static func add_figure(grid: GridContainer, caption: String, value: String) -> v
 	grid.add_child(value_label)
 
 
-## The countries the course passes (#230) by their codes, e.g. "CH · DE · FR", their names
-## on hover; nothing where they are not known.
-static func _add_countries(grid: GridContainer, countries: Array) -> void:
+## Country codes (#230), with names on hover; a single-country world shows its name directly.
+static func _add_countries(grid: GridContainer, countries: Array, show_name: bool = false) -> void:
 	if countries.is_empty():
 		return
 	var codes: PackedStringArray = PackedStringArray()
@@ -158,10 +157,13 @@ static func _add_countries(grid: GridContainer, countries: Array) -> void:
 		if countries.size() == 1
 		else TranslationServer.translate("Countries")
 	)
-	add_figure(grid, caption, " · ".join(codes))
+	var shown: String = names[0] if show_name and names.size() == 1 else " · ".join(codes)
+	add_figure(grid, caption, shown)
 	var value: Label = grid.get_child(grid.get_child_count() - 1) as Label
 	value.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	value.tooltip_text = ", ".join(names)
+	value.tooltip_text = (
+		"%s · %s" % [codes[0], names[0]] if show_name and names.size() == 1 else ", ".join(names)
+	)
 	# Sees the mouse for its tooltip; the click still reaches the card.
 	value.mouse_filter = Control.MOUSE_FILTER_PASS
 

@@ -31,6 +31,7 @@ func _run() -> void:
 	_orqwa.course_added.connect(func(path: String) -> void: _added = path)
 	_cutouts()
 	_diffuse_materials()
+	_section_backdrops()
 	var course: Dictionary = await _imported()
 	if not course.is_empty():
 		await _opened(course)
@@ -211,6 +212,40 @@ func _diffuse_materials() -> void:
 	)
 	var colour: Color = terrain.get_shader_parameter("base_color")
 	_check(colour == dry.albedo_color, "diffuse terrain keeps the authored colour")
+
+
+func _section_backdrops() -> void:
+	var document: GLTFDocument = GLTFDocument.new()
+	var state: GLTFState = GLTFState.new()
+	var source: Dictionary = {
+		"asset": {"version": "2.0"},
+		"scene": 0,
+		"scenes": [{"nodes": [0, 1]}],
+		"nodes": [{"name": "ground", "extras": {"ORQWA_section": 0}}, {"name": "outer"}]
+	}
+	_check(
+		document.append_from_buffer(JSON.stringify(source).to_utf8_buffer(), "", state) == OK,
+		"background metadata fixture imports"
+	)
+	var scene: Node3D = document.generate_scene(state) as Node3D
+	AuthoredWorld._tag_backdrops(state)
+	var ground: Node3D = state.get_scene_node(0) as Node3D
+	var outer: Node3D = state.get_scene_node(1) as Node3D
+	var world: AuthoredWorld = AuthoredWorld.new()
+	world._sections.append({})
+	world._register_backdrops(scene)
+	_check(ground.visible, "coarse background covers unloaded sections")
+	world._shown[0] = 0
+	world._background_visible(0, false)
+	_check(not ground.visible and outer.visible, "detailed section replaces only its background")
+	world._let_go(0)
+	_check(ground.visible, "unloading a section restores its ground without a hole")
+	world._shown[0] = 1
+	world._backgrounds.clear()
+	world._register_backdrops(scene)
+	_check(not ground.visible, "a horizon loaded later respects already shown sections")
+	world.free()
+	scene.free()
 
 
 func _wait_until(done: Callable, what: String) -> void:

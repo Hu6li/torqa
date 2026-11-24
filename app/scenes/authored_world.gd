@@ -43,6 +43,8 @@ var _asset_meshes: Dictionary[String, Mesh] = {}
 var _tinted_meshes: Dictionary[String, Mesh] = {}
 var _horizon: String = ""
 var _horizon_node: Node3D
+## Optional coarse ground in the horizon, replaced by its section while that section is shown.
+var _backgrounds: Dictionary[int, Array] = {}
 ## The sky panorama asked for, and the environment and brightness it is for.
 var _panorama: String = ""
 var _panorama_environment: Environment
@@ -109,6 +111,7 @@ func stop() -> void:
 	_tinted_meshes.clear()
 	_horizon = ""
 	_horizon_node = null
+	_backgrounds.clear()
 	_panorama = ""
 	_panorama_environment = null
 	_focus = Vector3.INF
@@ -284,12 +287,52 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 		var cutouts: Array[Array] = AuthoredMaterials.prepare(state)
 		node = document.generate_scene(state) as Node3D
 		if node != null:
+			_tag_backdrops(state)
 			AuthoredMaterials.use_vertex_colours(node)
 			AuthoredMaterials.apply_terrain_layers(state, node)
 			node.set_meta("cutouts", cutouts)
 	_made_lock.lock()
 	_made[file] = node
 	_made_lock.unlock()
+
+
+## Optional glTF node metadata links a horizon group to a section, without burying either
+## surface or drawing two coplanar meshes. Unknown or invalid values remain ordinary scenery.
+static func _tag_backdrops(state: GLTFState) -> void:
+	var described: Array = state.json.get("nodes", [])
+	for index: int in described.size():
+		var entry: Dictionary = described[index]
+		var metadata: Variant = entry.get("extras", {})
+		if not metadata is Dictionary:
+			continue
+		var extras: Dictionary = metadata
+		var value: Variant = extras.get("ORQWA_section", -1)
+		if not (value is int or value is float):
+			continue
+		var number: float = value
+		if not is_finite(number) or number < 0.0 or number != floor(number):
+			continue
+		var scene: Node = state.get_scene_node(index)
+		if scene is Node3D:
+			scene.set_meta("ORQWA_section", int(number))
+
+
+func _register_backdrops(node: Node3D) -> void:
+	if node.has_meta("ORQWA_section"):
+		var section: int = node.get_meta("ORQWA_section")
+		if section >= 0 and section < _sections.size():
+			var groups: Array = _backgrounds.get_or_add(section, [])
+			groups.append(node)
+			node.visible = not _shown.has(section)
+	for child: Node in node.get_children():
+		if child is Node3D:
+			_register_backdrops(child as Node3D)
+
+
+func _background_visible(index: int, shown: bool) -> void:
+	var groups: Array = _backgrounds.get(index, [])
+	for node: Node3D in groups:
+		node.visible = shown
 
 
 ## Puts the scenes made since into the world: each section's best level so far replaces the one
@@ -321,6 +364,7 @@ func _use_scene(file: String, node: Node3D) -> void:
 	if file == _horizon:
 		node.name = "Horizon"
 		_horizon_node = node
+		_register_backdrops(node)
 		_no_shadows(node)
 		add_child(node)
 		return
@@ -344,10 +388,12 @@ func _use_scene(file: String, node: Node3D) -> void:
 			_no_shadows(node)
 		var before: Node3D = _section_nodes.get(index)
 		if before != null:
+			before.hide()
 			before.queue_free()
 		add_child(node)
 		_section_nodes[index] = node
 		_shown[index] = wanted
+		_background_visible(index, false)
 		return
 	# Planned away while it was made.
 	node.free()
@@ -489,9 +535,11 @@ func _refresh_asset_meshes() -> void:
 func _let_go(index: int) -> void:
 	var node: Node3D = _section_nodes.get(index)
 	if node != null:
+		node.hide()
 		node.queue_free()
 	_section_nodes.erase(index)
 	_shown.erase(index)
+	_background_visible(index, true)
 	if _placed.has(index):
 		var groups: Array[Dictionary] = _placed[index]["groups"]
 		for group: Dictionary in groups:
