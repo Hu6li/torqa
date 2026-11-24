@@ -51,6 +51,17 @@ var _panorama_environment: Environment
 var _panorama_energy: float = 1.0
 var _focus: Vector3 = Vector3.INF
 var _view_m: float = RideWorld.VISIBILITY_RANGE
+var _details: AuthoredDetails
+
+
+func _init() -> void:
+	_details = AuthoredDetails.new(self, _ask)
+
+
+## Optional authored scenery follows the preset, independently of view-distance overrides.
+func apply_quality(quality: String) -> void:
+	_details.apply_quality(quality)
+	_focus = Vector3.INF
 
 
 ## Shows the ride's credits in `label` if `shown`: a world file's own (R282), else the map's
@@ -96,6 +107,7 @@ func stop() -> void:
 		if node != null:
 			node.free()
 	_settling.clear()
+	_details.clear()
 	for child: Node in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -231,6 +243,7 @@ func _plan(camera: Vector3) -> void:
 			_ask(instances)
 		elif _placed.has(index):
 			_choose_asset_lods(index)
+	_details.update(camera, _shown)
 
 
 func _lod_file(section: Dictionary, lod: int) -> String:
@@ -240,7 +253,7 @@ func _lod_file(section: Dictionary, lod: int) -> String:
 
 
 func _ask(file: String) -> void:
-	if _asked.has(file) or _parsing.has(file):
+	if _asked.has(file) or _parsing.has(file) or _settling.has(file):
 		return
 	_asked[file] = true
 	_orqwa.request_world_part(file)
@@ -256,6 +269,8 @@ func _take_parts() -> void:
 		if part == null:
 			continue
 		_asked.erase(file)
+		if _details.registered(file) and not _details.wanted(file):
+			continue
 		if part is String:
 			push_warning("world file part %s: %s" % [file, part])
 			continue
@@ -288,6 +303,7 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 		node = document.generate_scene(state) as Node3D
 		if node != null:
 			_tag_backdrops(state)
+			AuthoredDetails.tag(state, node)
 			AuthoredMaterials.use_vertex_colours(node)
 			AuthoredMaterials.apply_terrain_layers(state, node)
 			node.set_meta("cutouts", cutouts)
@@ -361,6 +377,9 @@ func _use_scene(file: String, node: Node3D) -> void:
 		return
 	var cutouts: Array[Array] = node.get_meta("cutouts", [] as Array[Array])
 	AuthoredMaterials.finish_cutouts(cutouts)
+	if _details.registered(file):
+		_details.use_scene(file, node)
+		return
 	if file == _horizon:
 		node.name = "Horizon"
 		_horizon_node = node
@@ -393,6 +412,9 @@ func _use_scene(file: String, node: Node3D) -> void:
 		add_child(node)
 		_section_nodes[index] = node
 		_shown[index] = wanted
+		if wanted == 0:
+			_details.register_section(index, section, node, _assets)
+		_details.update(_focus, _shown)
 		_background_visible(index, false)
 		return
 	# Planned away while it was made.

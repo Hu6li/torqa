@@ -5,6 +5,13 @@ description: How to see ORQWA's 3D world and models without a GPU — render scr
 
 # Rendering ORQWA for review
 
+For optional close authored scenery (R278), compare Medium and Ultra with the same section,
+camera and light. Use the real `AuthoredDetails` controller for the detail group, so a review
+also exercises range and preset behavior. Check an object at the visibility fade, a move
+away/back and a downgrade with a load in flight. Lighter presets must request no group bytes,
+and freed nodes must release their mesh/texture references. Keep essential scenery in the
+ordinary world. `authored_detail_smoke.gd` covers the loader lifecycle without a display.
+
 On a Windows PC with a GPU, render natively instead: `scripts/dev.sh scripts/build-gdext.sh
 release windows` cross-builds the extension into `app/bin/` (ADR 0021), and the portable Godot
 editor on the host runs the same scripts (`app/tools/render_views.gd` with `ROUTE`, `SHOTS`,

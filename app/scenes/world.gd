@@ -5,9 +5,7 @@ extends Node3D
 enum CameraMode { CHASE, FIRST_PERSON, DRONE }
 
 # i18n-begin: time-of-day and weather names are shown in the setup screen.
-## Sun elevation and azimuth (degrees, azimuth clockwise from north), sun and sky light energy
-## per time of day, with the palette's names of its sun and sky colours. A low sun gets more sky
-## light, so mornings and evenings stay bright and pastel.
+## Sun angles and palette colours per time of day; low sun gets more sky fill.
 const TIMES: Dictionary[String, Dictionary] = {
 	"Morning":
 	{
@@ -61,33 +59,27 @@ const TEXTURES: Dictionary[String, Texture2D] = {
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
-## The land beyond the corridor reaches 12 km from the route (`orqwa_world::HORIZON`); the
-## camera sees that far, the haze hides its end.
+## Camera range includes the 12 km horizon; haze hides its end.
 const HORIZON_RANGE: float = 14000.0
 ## Buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
 ## Bushes and rocks are smaller still.
 const SMALL_PLANT_RANGE: float = 600.0
-## Sidewalks and curbs are small: beyond this the ground's paving under them carries the look,
-## on every preset. Measured to the middle of a chunk's: none ends nearer than about 360 m.
+## Beyond this, ground paving carries sidewalks; chunk centres keep their ends beyond 360 m.
 const SIDEWALK_RANGE: float = 700.0
-## Tracks and paths are narrow and light: far off they drew bright lines across the crowns that
-## hide them (terrain.gdshader), so they end here, on every preset, measured likewise.
+## End narrow tracks before they draw bright lines across the distant canopy.
 const TRACK_RANGE: float = 1000.0
 const CAMERA_SMOOTHING: float = 6.0
 ## Leaning in and out of bends takes a moment (1 / seconds).
 const LEAN_SMOOTHING: float = 3.0
-## The free camera of simulated rides (#53): metres per second, radians per pixel of mouse and
-## radians per second with Shift + arrows.
+## Simulated free camera (#53): m/s, radians per mouse pixel and Shift-arrow radians/s.
 const FREE_SPEED: float = 25.0
 const FREE_LOOK: float = 0.004
 const FREE_TURN: float = 1.2
 ## A rider moving further than this between frames jumped: the camera follows at once.
 const JUMP_M: float = 50.0
-## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
-## scales terrain and details; trees have their own range and uploaded density (R108).
-## `tree_lod_bias` below 1 takes trees' coarser levels sooner: on Low it saves a tablet GPU
-## 2–4 ms per frame.
+## Graphics presets (R43): Medium targets 60 fps on M1; trees have separate ranges/density (R108).
+## Low's earlier tree LODs save tablet GPUs 2–4 ms per frame.
 ## MSAA stays at 2×; 4× previously caused bright distant pixels to spread through bloom.
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
@@ -292,7 +284,6 @@ func bind(orqwa: OrqwaApp) -> void:
 	_orqwa.profile_changed.connect(_apply_rider)
 
 
-## Whether the free camera flies (its arrows move it).
 func is_free_camera() -> bool:
 	return _free
 
@@ -316,7 +307,6 @@ static func camera_names() -> PackedStringArray:
 	return names
 
 
-## The current camera mode (`CameraMode`).
 func camera() -> int:
 	return _camera_mode
 
@@ -411,10 +401,10 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 		material.set_shader_parameter("puddle_color", sky_horizon)
 
 
-## Applies a graphics preset (`QUALITY` key, as `OrqwaApp.graphics_quality()` names it) and the
-## options set apart from it (R90, as `OrqwaApp.graphics_options()` gives them; "auto" follows
-## the preset).
+## Applies a named graphics preset and R90 overrides; "auto" follows the preset.
 func apply_quality(name: String, options: Dictionary = {}) -> void:
+	if _authored != null:
+		_authored.apply_quality(name)
 	var previous_density: float = _quality["tree_density"]
 	var previous_building_detail: bool = _quality["building_detail"]
 	var preset: Dictionary = QUALITY.get(name, QUALITY["medium"])
