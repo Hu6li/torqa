@@ -111,6 +111,7 @@ of a section centred on [e, n, h] lies at east `e + x`, north `n − z` and elev
 | `horizon` | Optional: one `.glb` in world coordinates around the origin, always drawn behind everything. |
 | `preview` | Optional: `preview.png`. |
 | `routes` | At least one. Ids are unique, 1–64 of `a–z 0–9 -`. |
+| `extensions_used`, `extensions_required`, `extensions` | Optional: features beyond this specification ([below](#extensions)). |
 
 Every number is finite. Colours are sRGB, from 0 to 1.
 
@@ -129,6 +130,27 @@ and **Video** courses. Their cards carry a **World** pill beside the name, match
 **Video** pill. `preview.png` keeps its aspect ratio, with rounded image corners.
 Use 1072 × 640 pixels to fill a standard course card like an imported GPX map; other aspect
 ratios remain supported.
+
+### Extensions
+
+A world can use features later ORQWA versions add (lights, sound, moving parts) without a new
+format, the way glTF does:
+
+```json
+"extensions_used": ["ORQWA_ambient_sound"],
+"extensions_required": [],
+"extensions": { "ORQWA_ambient_sound": { "file": "sound/waves.ogg" } }
+```
+
+- `extensions_used` names every extension the world uses, each once. A name is a vendor prefix
+  and a name of letters, digits and `_`, 3–64 long (`ORQWA_ambient_sound`).
+- `extensions_required` names those the world cannot be ridden without; each is also in
+  `extensions_used`.
+- `extensions` holds each extension's own data, by its name, in the shape the extension
+  defines; only extensions in `extensions_used` may have an entry.
+- An ORQWA that does not know an extension ignores it, and shows the world without it. If the
+  extension is required, ORQWA does not open the world and asks for an update instead.
+- This version of ORQWA knows no world extension yet. Each one ORQWA learns is specified here.
 
 ### Sections and levels of detail
 

@@ -1275,7 +1275,7 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - **Exit:** riders behind separate routers join deliberately, ride together and continue alone
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
-### Phase 14 — Authored worlds (R282–R295, #433, [ADR 0042](adr/0042-world-files.md), [ADR 0043](adr/0043-signed-licensed-worlds.md))
+### Phase 14 — Authored worlds (R282–R296, #433, [ADR 0042](adr/0042-world-files.md), [ADR 0043](adr/0043-signed-licensed-worlds.md))
 
 Worlds built outside ORQWA, ridden as they are ([world-files.md](world-files.md)). Stage 1 is
 the format and riding it; the realistic Lake Biel world is built in a private repository.
@@ -1302,6 +1302,8 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `world-seal` (streaming); the
   test world sealed with the development key; `orqwa-gd` and `orqwa-cli` refuse dev keys in
   release builds, which name them beside their version otherwise; tags need a release root
+- [x] World extensions in `world.json`, as in glTF: unknown optional ones ignored, unknown
+  required ones ask for an update (R296)
 - [ ] The maintainers' roots made offline and built in (`RELEASE_ROOTS`) before a release
 - [ ] The shop page: paid worlds as downloads under their licence
 - [ ] Premium video courses in world files (R295): FFmpeg reading stored, seekable entries

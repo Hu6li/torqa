@@ -593,3 +593,57 @@ fn a_part_swapped_after_signing_is_refused_as_changed_before_it_is_read_or_parse
         std::fs::remove_file(path).unwrap();
     }
 }
+
+#[test]
+fn an_extension_this_orqwa_does_not_know_is_ignored_unless_required() {
+    let optional = with_description(|d| {
+        d["extensions_used"] = json!(["ORQWA_ambient_sound"]);
+        d["extensions"] =
+            json!({"ORQWA_ambient_sound": {"file": "sound/waves.ogg", "anything": [1, 2]}});
+    });
+    let path = archive(&optional);
+    let description = validate(&path, &trust()).unwrap();
+    assert_eq!(description.extensions_used, ["ORQWA_ambient_sound"]);
+    assert!(
+        WorldFile::open(&path, &trust())
+            .unwrap()
+            .route("loop")
+            .is_ok()
+    );
+    std::fs::remove_file(path).unwrap();
+
+    let required = with_description(|d| {
+        d["extensions_used"] = json!(["ORQWA_lights"]);
+        d["extensions_required"] = json!(["ORQWA_lights"]);
+    });
+    let path = archive(&required);
+    assert!(matches!(
+        validate(&path, &trust()),
+        Err(WorldError::NeedsExtension(name)) if name == "ORQWA_lights"
+    ));
+    let error = read_description(&path, &trust()).unwrap_err().to_string();
+    assert!(error.contains("please update"), "{error}");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn extensions_are_declared_as_gltf_declares_them() {
+    refused(
+        &with_description(|d| d["extensions_required"] = json!(["ORQWA_lights"])),
+        "required but not used",
+    );
+    refused(
+        &with_description(|d| d["extensions"] = json!({"ORQWA_lights": {}})),
+        "not in extensions_used",
+    );
+    for name in [json!("lights"), json!("ORQWA lights"), json!("")] {
+        refused(
+            &with_description(|d| d["extensions_used"] = json!([name])),
+            "not a unique extension name",
+        );
+    }
+    refused(
+        &with_description(|d| d["extensions_used"] = json!(["ORQWA_a", "ORQWA_a"])),
+        "not a unique extension name",
+    );
+}

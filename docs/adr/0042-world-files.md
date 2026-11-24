@@ -149,3 +149,10 @@ version 1; the optional metadata requires the updated viewer to switch backgroun
 gains `manifest.json` and `signature.json`. ORQWA opens only world files signed by the
 maintainers. Sold worlds are downloads under their own licence, usable on all of the buyer's
 devices, with no activation. Stage 3's editor stays with the maintainers.
+
+**Amendment (2026-11-24, R296).** `world.json` gains glTF's extension rules:
+`extensions_used`, `extensions_required` and `extensions`. An ORQWA that does not know an
+optional extension ignores it; one that does not know a required extension asks for an update.
+New features for worlds (lights, sound, moving parts, themed worlds' needs) come as extensions,
+so format 1 stays readable by every later ORQWA and older ones open what they can. A new format
+is kept for changes no extension can express.

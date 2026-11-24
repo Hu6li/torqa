@@ -78,6 +78,9 @@ pub enum WorldError {
     /// The file was written for a newer ORQWA.
     #[error("world format {0} is newer than this ORQWA supports ({FORMAT}); please update")]
     NewerFormat(u32),
+    /// The world needs an extension this ORQWA does not know.
+    #[error("this world needs {0}, which this ORQWA does not have; please update")]
+    NeedsExtension(String),
     /// The file breaks a rule of the format: which, and where.
     #[error("{0}")]
     Invalid(String),
@@ -135,6 +138,17 @@ pub struct Description {
     pub preview: Option<String>,
     /// The routes through the world.
     pub routes: Vec<RouteEntry>,
+    /// Extensions the world uses, as glTF names them: an ORQWA that does not know one ignores
+    /// it, unless it is also in `extensions_required`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions_used: Vec<String>,
+    /// Extensions the world cannot be ridden without: an ORQWA that does not know one asks
+    /// for an update instead of opening the world.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions_required: Vec<String>,
+    /// Each extension's own data, by its name; its shape is the extension's to define.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub extensions: BTreeMap<String, serde_json::Value>,
 }
 
 /// Where a world lies on Earth.
@@ -338,7 +352,40 @@ impl Part {
     }
 }
 
+/// The world extensions this ORQWA knows; an optional one it does not know is ignored.
+pub const KNOWN_EXTENSIONS: &[&str] = &[];
+const MAX_EXTENSIONS: usize = 64;
+
 impl Description {
+    /// Extensions follow glTF's rules: every one used is listed in `extensions_used`, once;
+    /// required ones are among them; data comes only for listed ones.
+    fn check_extensions(&self) -> Result<(), WorldError> {
+        let used = &self.extensions_used;
+        if used.len() > MAX_EXTENSIONS {
+            return Err(invalid(format!("more than {MAX_EXTENSIONS} extensions")));
+        }
+        let mut seen = BTreeSet::new();
+        for name in used {
+            if !extension_name(name) || !seen.insert(name.as_str()) {
+                return Err(invalid(format!(
+                    "extension {name:?}: not a unique extension name"
+                )));
+            }
+        }
+        if let Some(name) = self.extensions.keys().find(|n| !seen.contains(n.as_str())) {
+            return Err(invalid(format!("extension {name}: not in extensions_used")));
+        }
+        for name in &self.extensions_required {
+            if !seen.contains(name.as_str()) {
+                return Err(invalid(format!("extension {name}: required but not used")));
+            }
+            if !KNOWN_EXTENSIONS.contains(&name.as_str()) {
+                return Err(WorldError::NeedsExtension(name.clone()));
+            }
+        }
+        Ok(())
+    }
+
     /// Checks everything the description says by itself, and lists the entries it names.
     fn parts(&self) -> Result<BTreeMap<&str, Part>, WorldError> {
         if self.format != FORMAT {
@@ -514,6 +561,13 @@ fn text(field: &str, value: &str, max: usize) -> Result<(), WorldError> {
     Ok(())
 }
 
+/// An extension's name: a vendor prefix and a name, as glTF's (`ORQWA_ambient_sound`).
+fn extension_name(name: &str) -> bool {
+    (3..=64).contains(&name.len())
+        && name.contains('_')
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
 fn uuid(id: &str) -> bool {
     let groups: Vec<&str> = id.split('-').collect();
     groups.iter().map(|g| g.len()).eq([8, 4, 4, 4, 12])
@@ -629,6 +683,7 @@ fn description_of(bytes: &[u8]) -> Result<Description, WorldError> {
         return Err(WorldError::NewerFormat(format));
     }
     let description: Description = parse(DESCRIPTION, bytes)?;
+    description.check_extensions()?;
     description.parts()?;
     Ok(description)
 }
