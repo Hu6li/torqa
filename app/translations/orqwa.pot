@@ -120,7 +120,7 @@ msgid "%s didn't add you in time, or the connection was blocked"
 msgstr ""
 
 #: app/scenes/ride_screen.gd
-msgid "%s disconnected — reconnecting…"
+msgid "%s disconnected. Reconnecting…"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -172,7 +172,7 @@ msgid "%s not found"
 msgstr ""
 
 #: app/ui/ride_devices.gd
-msgid "%s not found — wake it, then reconnect again."
+msgid "%s not found. Wake it, then reconnect."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -383,6 +383,18 @@ msgstr ""
 msgid "Age"
 msgstr ""
 
+#: app/scenes/ride_camera.gd
+msgid "Ahead"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Ahead left"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Ahead right"
+msgstr ""
+
 #: app/ui/video_align_dialog.gd
 msgid "Align"
 msgstr ""
@@ -540,7 +552,7 @@ msgid "Autumn"
 msgstr ""
 
 #: app/ui/hud_editor.gd
-msgid "Available — drag in to add, drop here to remove"
+msgid "Available: drag in to add, drop here to remove"
 msgstr ""
 
 #: core/orqwa-app/src/hud.rs
@@ -577,6 +589,18 @@ msgstr ""
 
 #: app/scenes/overlay_hud.gd
 msgid "Back to the whole ride screen (O or Esc)"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Behind"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Behind left"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Behind right"
 msgstr ""
 
 #: app/ui/course_settings.gd
@@ -655,11 +679,35 @@ msgstr ""
 msgid "Camera"
 msgstr ""
 
+#: app/ui/ride_options.gd
+msgid "Camera angle"
+msgstr ""
+
+#: app/scenes/ride_camera_controls.gd
+msgid "Camera distance: %s"
+msgstr ""
+
+#: app/ui/camera_bar.gd
+msgid "Camera further away, or look down (Shift + ↓)"
+msgstr ""
+
+#: app/ui/camera_bar.gd
+msgid "Camera nearer, or look up (Shift + ↑)"
+msgstr ""
+
+#: app/ui/camera_bar.gd
+msgid "Camera round to the left (Shift + ←); in first person, look right"
+msgstr ""
+
+#: app/ui/camera_bar.gd
+msgid "Camera round to the right (Shift + →); in first person, look left"
+msgstr ""
+
 #: app/ui/ride_bar.gd
 msgid "Camera, difficulty, weather, HUD; finish or abort (keyboard: S)"
 msgstr ""
 
-#: app/scenes/ride_screen.gd
+#: app/scenes/ride_camera_controls.gd
 msgid "Camera: %s"
 msgstr ""
 
@@ -1331,6 +1379,10 @@ msgstr ""
 msgid "Double press"
 msgstr ""
 
+#: app/scenes/ride_camera.gd
+msgid "Down"
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Down (left pod)"
 msgstr ""
@@ -1341,10 +1393,6 @@ msgstr ""
 
 #: app/ui/course_settings.gd
 msgid "Download again"
-msgstr ""
-
-#: app/ui/update_dialog.gd
-msgid "Download it from its release page."
 msgstr ""
 
 #: app/ui/group_next_step.gd
@@ -1476,7 +1524,7 @@ msgid "Estimated calories based on power (24% efficiency)."
 msgstr ""
 
 #: core/orqwa-app/src/hud.rs
-msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, an assumed effort is optional in Rider settings."
+msgid "Estimated calories. Uses power first, then heart rate with your age and sex. Without either, you can choose an assumed effort in Rider settings."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -1571,7 +1619,7 @@ msgstr ""
 msgid "Fallback organizer"
 msgstr ""
 
-#: app/ui/graphics_settings.gd
+#: app/scenes/ride_camera.gd app/ui/graphics_settings.gd
 msgid "Far"
 msgstr ""
 
@@ -1663,6 +1711,10 @@ msgstr ""
 msgid "Fold the controls away"
 msgstr ""
 
+#: app/translations/extra-msgids.txt
+msgid "For more detailed 3D worlds, download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "For powerful GPUs: the sharpest shadows, the most grass and the farthest view."
 msgstr ""
@@ -1733,6 +1785,18 @@ msgstr ""
 
 #: app/scenes/course_detail.gd
 msgid "From start"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Front"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Front left"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Front right"
 msgstr ""
 
 #: app/ui/graphics_settings.gd app/ui/ride_bar.gd
@@ -1832,7 +1896,7 @@ msgid "HUD"
 msgstr ""
 
 #: app/ui/hud_editor.gd
-msgid "HUD — drop figures where you want them"
+msgid "HUD: drop figures where you want them"
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -2068,7 +2132,7 @@ msgid "Jun"
 msgstr ""
 
 #: app/ui/moment_lines.gd
-msgid "Just {left} to go, give it everything you have left!"
+msgid "Just {left} to go, give it everything!"
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -2139,12 +2203,20 @@ msgstr ""
 msgid "Leave voice"
 msgstr ""
 
+#: app/scenes/ride_camera.gd
+msgid "Left"
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Left (left pod)"
 msgstr ""
 
 #: app/scenes/courses_tab.gd app/ui/course_card.gd
 msgid "Length"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Level"
 msgstr ""
 
 #: app/scenes/course_detail.gd
@@ -2193,6 +2265,10 @@ msgstr ""
 
 #: app/scenes/workouts_tab.gd
 msgid "Looking up today's plan…"
+msgstr ""
+
+#: app/scenes/ride_camera_controls.gd
+msgid "Looking: %s"
 msgstr ""
 
 #: app/ui/group_notices.gd
@@ -2359,7 +2435,7 @@ msgstr ""
 msgid "Name the course"
 msgstr ""
 
-#: app/ui/graphics_settings.gd
+#: app/scenes/ride_camera.gd app/ui/graphics_settings.gd
 msgid "Near"
 msgstr ""
 
@@ -2397,6 +2473,10 @@ msgstr ""
 
 #: app/scenes/button_dialog.gd
 msgid "Next camera"
+msgstr ""
+
+#: app/ui/camera_bar.gd
+msgid "Next camera (C)"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -2476,7 +2556,7 @@ msgid "No signal"
 msgstr ""
 
 #: app/scenes/start_page.gd
-msgid "No trainer connected — choose one under Devices."
+msgid "No trainer connected. Choose one under Devices."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -2509,6 +2589,10 @@ msgstr ""
 
 #: app/scenes/course_edit_dialog.gd
 msgid "None: ridden in the 3D world"
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Normal"
 msgstr ""
 
 #: app/scenes/history_screen.gd
@@ -2571,10 +2655,6 @@ msgstr ""
 msgid "ORQWA %s is available."
 msgstr ""
 
-#: app/ui/update_dialog.gd
-msgid "ORQWA %s is available; you have %s."
-msgstr ""
-
 #: app/ui/picked_file.gd
 msgid "ORQWA cannot open %s: it opens %s files."
 msgstr ""
@@ -2605,14 +2685,6 @@ msgstr ""
 
 #: app/scenes/courses_tab.gd
 msgid "ORQWA courses"
-msgstr ""
-
-#: app/ui/update_dialog.gd
-msgid "ORQWA downloads and installs it; then open ORQWA again."
-msgstr ""
-
-#: app/ui/update_dialog.gd
-msgid "ORQWA downloads it, closes and installs it, then starts again."
 msgstr ""
 
 #: app/scenes/account_dialog.gd
@@ -2712,7 +2784,7 @@ msgid "Optional age for heart-rate calories (18–100). Increases each New Year.
 msgstr ""
 
 #: app/ui/profile_form.gd
-msgid "Optional sex for heart-rate calories. Separate from your avatar. Power needs no sex."
+msgid "Optional sex for heart-rate calories. Separate from your avatar, and not needed with power."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -3145,6 +3217,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Riding this course needs %s of free storage for its 3D world; %s is free. Free up some storage, then ride again."
+msgstr ""
+
+#: app/scenes/ride_camera.gd
+msgid "Right"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3879,6 +3955,10 @@ msgstr ""
 msgid "Unmute %s"
 msgstr ""
 
+#: app/scenes/ride_camera.gd
+msgid "Up"
+msgstr ""
+
 #: app/scenes/button_dialog.gd
 msgid "Up (left pod)"
 msgstr ""
@@ -3933,6 +4013,10 @@ msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Version %s"
+msgstr ""
+
+#: app/ui/update_dialog.gd
+msgid "Version %s is available (you have %s)."
 msgstr ""
 
 #: app/ui/about_page.gd
@@ -4053,10 +4137,6 @@ msgstr ""
 
 #: app/scenes/devices_tab.gd
 msgid "Wake the devices first."
-msgstr ""
-
-#: app/translations/extra-msgids.txt
-msgid "Want more detailed 3D worlds? Download the regions you ride in, then open a course to save that map detail in its .oqc file. Share the file, and the other rider can use the detail offline without downloading the region."
 msgstr ""
 
 #: app/ui/workout_panel.gd
@@ -4215,6 +4295,10 @@ msgstr ""
 msgid "You are back with the group."
 msgstr ""
 
+#: app/ui/update_dialog.gd
+msgid "You can download the new version from the release page."
+msgstr ""
+
 #: app/ui/continuation_dialog.gd
 msgid "You haven't finished this course. Would you like to save your place?"
 msgstr ""
@@ -4340,7 +4424,7 @@ msgid "Your rides"
 msgstr ""
 
 #: app/ui/update_dialog.gd
-msgid "Your rides and settings stay as they are."
+msgid "Your rides and settings are kept."
 msgstr ""
 
 #: app/scenes/analysis_tab.gd
@@ -4461,6 +4545,14 @@ msgstr ""
 
 #: app/scenes/profile_tab.gd
 msgid "“%s” and all their rides are deleted."
+msgstr ""
+
+#: app/ui/update_dialog.gd
+msgid "“%s” downloads and installs the new version, then restarts the app."
+msgstr ""
+
+#: app/ui/update_dialog.gd
+msgid "“%s” downloads and installs the new version. Open the app again when it's done."
 msgstr ""
 
 #: app/ui/power_record_badges.gd

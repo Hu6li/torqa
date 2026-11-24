@@ -123,7 +123,7 @@ pub enum ElevationSource {
     Terrain,
     /// Elevations recorded in the file.
     File,
-    /// The route of a world file (R269, ADR 0042): authored, taken as it is.
+    /// The route of a world file (R283, ADR 0042): authored, taken as it is.
     World,
 }
 

@@ -447,7 +447,7 @@ func _map_detail(orqwa: OrqwaApp, dialog: SettingsDialog) -> void:
 	_check(info.icon == UiIcons.texture("info"), "an info button beside the setting")
 	var tooltip_copy: String = info.tooltip_text.replace("\n", " ")
 	_check(
-		tooltip_copy.begins_with("Want more detailed 3D worlds?"),
+		tooltip_copy.begins_with("For more detailed 3D worlds,"),
 		"the tooltip starts with its purpose"
 	)
 	_check(

@@ -101,3 +101,33 @@ Options considered:
   release since 0.5.2 carries it, and ORQWA asks only for the latest. Releases 0.5.0 and 0.5.1
   no longer find an installer they know, so their update check opens the release page, as on
   macOS and Linux. The installer downloaded there still updates them in place.
+
+## Amendment 2026-11-20: updating Linux in place (R268)
+
+- **What.** Linux releases have no installer (ADR 0012): riders unpack
+  `ORQWA-<version>-linux-<arch>.tar.gz` and start `ORQWA.<arch>` from the folder. The update
+  replaces that folder, the smallest step that needs no new packaging; AppImage and Flatpak
+  would bring desktop integration too, but new tools in the release job and, for Flatpak,
+  Flathub's rules.
+- **When it may.** Only an unpacked release updates itself: the program beside
+  `liborqwa_gd.so`, in a folder whose parent the rider may change. ORQWA tries to make and
+  remove a folder there, the one check that also holds for ACLs, read-only mounts and root.
+  Elsewhere the offer opens the release page, as on macOS; the wiki says where to unpack.
+- **Installing.** The tarball for this processor is downloaded into the cache
+  (`updates/ORQWA-<version>.tar.gz`) and kept only when complete. The system's `tar` unpacks it
+  into `.<folder>-update` beside ORQWA's folder, on the same file system, and the result must
+  hold the running program's name, runnable, beside the extension. Then ORQWA's folder is
+  renamed to `.<folder>-old` and the new one takes its name. Linux lets a running program's
+  folder be renamed, so the swap needs no helper; only starting the new program waits, in a
+  `sh` loop, until the old process has exited, so the two never share the rider's files or the
+  trainer's connection. A failed second rename puts the old folder back. Up to the
+  swap, any failure leaves ORQWA as it was.
+- **Afterwards.** The next start removes `.<folder>-old` and an unfinished `.<folder>-update`,
+  and only beside a release folder. Files riders put into ORQWA's folder go with the old
+  release; the wiki says to keep nothing there. Rides, courses and settings live under
+  `~/.local/share` and `~/.cache`, outside it.
+- **No new dependency.** The system's `tar` unpacks: it is on every distribution ADR 0012
+  supports, and a Rust `tar` crate would add a dependency for the same work. As on Windows, the
+  download is checked by its size only.
+- **The first one by hand.** Releases before this change open the release page on Linux; the
+  first release with it is downloaded by hand once.

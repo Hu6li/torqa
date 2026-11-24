@@ -62,6 +62,7 @@ var _moment_card: MomentCard = MomentCard.new()
 var _chime: MomentChime = MomentChime.new()
 ## Simulated rides (fake trainer): speed, jumps on map and profile, free camera (#53).
 var _bar: RideBar = RideBar.new()
+var _cameras: RideCameraControls = RideCameraControls.new()
 ## The group ride's riders, voice, shared workout and leaving (R180), at least as large as the
 ## ride's settings, in two columns (R196).
 var _group_window: AcceptDialog = AcceptDialog.new()
@@ -107,6 +108,7 @@ func bind(orqwa: OrqwaApp, world: RideWorld) -> void:
 	_orqwa = orqwa
 	_world = world
 	_jumps.bind(orqwa, world)
+	_cameras.bind(world)
 	_orqwa.device_connected.connect(_on_device_connected)
 	_orqwa.device_disconnected.connect(_on_device_disconnected)
 	_orqwa.remembered_missing.connect(_on_remembered_missing)
@@ -140,6 +142,7 @@ func begin(options: Dictionary) -> void:
 	_workout = options.get("workout", {})
 	var on_its_own: bool = not _workout.is_empty() and not options.get("on_course", false)
 	_backdrop.visible = on_its_own
+	_cameras.begin(not on_its_own and not _orqwa.riding_along_video())
 	_chart_panel.visible = on_its_own
 	_chart.set_series(PackedVector2Array(), PackedVector2Array(), PackedVector2Array())
 	_chart_left = 0.0
@@ -224,6 +227,7 @@ func _ready() -> void:
 	_bar.speed_chosen.connect(_set_time_scale)
 	_bar.folded_changed.connect(func(folded: bool) -> void: _orqwa.set_ride_bar_folded(folded))
 	add_child(_bar)
+	_cameras.attach(self, _bar, _show_toast)
 	($HudColumn as VBoxContainer).add_child(_assistance)
 	_build_group_window()
 	# Above the control bar, where it covers neither the HUD, the moments nor the map.
@@ -270,15 +274,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		get_viewport().set_input_as_handled()
 		return
-	if key.keycode in [KEY_UP, KEY_DOWN] and not _world.is_free_camera():
+	if RideCameraControls.is_key(key):
+		_cameras.press(key)
+	elif key.keycode in [KEY_UP, KEY_DOWN] and not _world.is_free_camera():
 		# Virtual gears (R9); with a cassette the rider shifts on the bike.
 		_orqwa.shift(1 if key.keycode == KEY_UP else -1)
 	elif key.keycode == KEY_O and not _finished:
 		overlay_requested.emit(true)
 	elif key.keycode in [KEY_P, KEY_SPACE] and not _finished:
 		_toggle_pause()
-	elif key.keycode == KEY_C:
-		_cycle_camera()
 	elif key.keycode == KEY_S and not _finished:
 		_open_settings()
 	elif key.keycode in [KEY_H, KEY_E]:
@@ -434,6 +438,7 @@ func _show_gear(gear: Variant) -> void:
 
 func _open_settings() -> void:
 	_options["camera"] = _world.camera()
+	_options["camera_angle"] = _world.camera_angle()
 	var world: bool = not _orqwa.riding_along_video()
 	_settings_dialog.edit(_options, _orqwa.hud_layout(not _workout.is_empty()), _imperial, world)
 
@@ -842,7 +847,7 @@ func _on_control_requested(control: String) -> void:
 	if control == "next_camera":
 		# The overlay shows no world to look at.
 		if not is_overlay():
-			_cycle_camera()
+			_cameras.cycle()
 	elif control == "overlay":
 		if not _finished:
 			overlay_requested.emit(not is_overlay())
@@ -899,12 +904,6 @@ func _control_music(music: Array) -> void:
 	_show_toast(tr(message))
 
 
-func _cycle_camera() -> void:
-	if _orqwa.riding_along_video() or _backdrop.visible:
-		return
-	_show_toast(tr("Camera: %s") % tr(_world.cycle_camera()))
-
-
 ## Pauses the ride, or goes on with it: the clock, the road and the trainer wait (P).
 func _toggle_pause() -> void:
 	if _continuation_dialog.visible:
@@ -948,7 +947,7 @@ func _on_device_connected(device_name: String) -> void:
 
 
 func _on_device_disconnected(device_name: String) -> void:
-	_show_toast(tr("%s disconnected — reconnecting…") % tr(device_name))
+	_show_toast(tr("%s disconnected. Reconnecting…") % tr(device_name))
 
 
 ## A reconnect from the ride settings (R69) did not find some devices.

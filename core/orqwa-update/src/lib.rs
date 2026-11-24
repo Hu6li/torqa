@@ -1,6 +1,10 @@
 //! Finding a newer ORQWA release and installing it (R99, ADR 0023): GitHub's latest release,
-//! its version against the running one, and on Windows and Android its installer, downloaded
-//! and installed over the running ORQWA (on Android by ORQWA's Android plugin, ADR 0024).
+//! its version against the running one, and on Windows, Android and Linux its installer,
+//! downloaded and installed over the running ORQWA (on Android by ORQWA's Android plugin,
+//! ADR 0024; on Linux the release's tarball takes the place of ORQWA's folder, R268).
+
+#[cfg(target_os = "linux")]
+mod linux;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -11,16 +15,20 @@ use tokio::io::AsyncWriteExt;
 /// GitHub's latest published release of ORQWA; drafts and pre-releases are never "latest".
 pub const LATEST_RELEASE: &str = "https://api.github.com/repos/ORQWA/ORQWA/releases/latest";
 
-/// The installer's platform in release asset names: the APK on Android, the MSI elsewhere (run
-/// only on Windows).
+/// The installer's platform in release asset names: the APK on Android, the tarball for this
+/// processor on Linux, the MSI elsewhere (run only on Windows).
 const PLATFORM: &str = if cfg!(target_os = "android") {
     "android-arm64.apk"
+} else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+    "linux-arm64.tar.gz"
+} else if cfg!(target_os = "linux") {
+    "linux-x86_64.tar.gz"
 } else {
     "windows-x86_64.msi"
 };
 
-/// The installer's release name, e.g. `ORQWA-0.5.2-windows-x86_64.msi` or
-/// `ORQWA-0.5.2-android-arm64.apk` (#322).
+/// The installer's release name, e.g. `ORQWA-0.5.2-windows-x86_64.msi`,
+/// `ORQWA-0.5.2-android-arm64.apk` or `ORQWA-0.5.2-linux-x86_64.tar.gz` (#322).
 #[must_use]
 pub fn installer_name(version: Version) -> String {
     format!("ORQWA-{version}-{PLATFORM}")
@@ -216,27 +224,49 @@ pub async fn download(
     Ok(path)
 }
 
-/// Whether this system can install an update itself; elsewhere the rider downloads it.
+/// Whether the running ORQWA can install an update itself; elsewhere the rider downloads it.
+/// On Linux only an unpacked release in a folder the rider may change can (R268).
 #[must_use]
-pub const fn can_install() -> bool {
-    cfg!(any(windows, target_os = "android"))
+pub fn can_install() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::current_exe().is_ok_and(|app| linux::can_install(&app))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        cfg!(any(windows, target_os = "android"))
+    }
 }
 
 /// The name a downloaded installer of `version` is saved as, ending as its release name does.
 #[must_use]
 pub fn download_name(version: Version) -> String {
-    let extension = PLATFORM.rsplit('.').next().unwrap_or_default();
+    let extension = PLATFORM.split_once('.').map_or("", |(_, e)| e);
     format!("ORQWA-{version}.{extension}")
 }
 
-/// Starts installing `msi` over the running ORQWA and then starting `app` again; the caller
-/// quits at once, so the installer can replace ORQWA's files. Windows asks for permission, as
-/// ORQWA is installed for all users.
+/// Removes what an update left beside the running ORQWA, once the new one has started: on
+/// Linux the replaced release's folder. Elsewhere the installer leaves nothing beside it.
+pub fn clean_up() {
+    #[cfg(target_os = "linux")]
+    if let Ok(app) = std::env::current_exe() {
+        linux::clean_up(&app);
+    }
+}
+
+/// Starts installing `installer` over the running ORQWA and then starting `app` again; the
+/// caller quits at once. On Windows the MSI replaces ORQWA's files once it has quit, and
+/// Windows asks for permission, as ORQWA is installed for all users. On Linux the release's
+/// tarball takes the place of ORQWA's folder.
 ///
 /// # Errors
-/// [`UpdateError::Install`] if the installer cannot be started, or on another system: on
-/// Android, ORQWA's Android plugin installs the APK.
-pub fn install(msi: &Path, app: &Path) -> Result<(), UpdateError> {
+/// [`UpdateError::Install`] if the installer cannot be started or the tarball put in place,
+/// or on another system: on Android, ORQWA's Android plugin installs the APK.
+pub fn install(installer: &Path, app: &Path) -> Result<(), UpdateError> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::install(installer, app)
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -246,7 +276,7 @@ pub fn install(msi: &Path, app: &Path) -> Result<(), UpdateError> {
         // has quit before the installer replaces its files. `/S` keeps cmd's quoting simple.
         let script = format!(
             "/S /C \"ping -n 4 127.0.0.1 >nul & msiexec /i \"{}\" /passive /norestart && start \"\" \"{}\"\"",
-            msi.display(),
+            installer.display(),
             app.display()
         );
         std::process::Command::new("cmd")
@@ -256,11 +286,11 @@ pub fn install(msi: &Path, app: &Path) -> Result<(), UpdateError> {
             .map(drop)
             .map_err(|e| UpdateError::Install(e.to_string()))
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
-        let _ = (msi, app);
+        let _ = (installer, app);
         Err(UpdateError::Install(
-            "ORQWA installs updates itself only on Windows".to_owned(),
+            "ORQWA installs updates itself only on Windows and Linux".to_owned(),
         ))
     }
 }
@@ -362,11 +392,7 @@ mod tests {
 
     #[test]
     fn the_installer_named_with_the_release_version_is_taken() {
-        let platform = if cfg!(target_os = "android") {
-            "android-arm64.apk"
-        } else {
-            "windows-x86_64.msi"
-        };
+        let platform = PLATFORM;
         let both = release_json(
             "v0.5.2",
             &[
@@ -400,12 +426,26 @@ mod tests {
                     "https://x/msi",
                     220_000_000,
                 ),
+                asset(
+                    "ORQWA-0.5.1-linux-x86_64.tar.gz",
+                    "https://x/linux-x86_64",
+                    90_000_000,
+                ),
+                asset(
+                    "ORQWA-0.5.1-linux-arm64.tar.gz",
+                    "https://x/linux-arm64",
+                    90_000_000,
+                ),
             ]
             .join(","),
         );
 
         let (url, name) = if cfg!(target_os = "android") {
             ("https://x/apk", "ORQWA-0.5.1.apk")
+        } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+            ("https://x/linux-arm64", "ORQWA-0.5.1.tar.gz")
+        } else if cfg!(target_os = "linux") {
+            ("https://x/linux-x86_64", "ORQWA-0.5.1.tar.gz")
         } else {
             ("https://x/msi", "ORQWA-0.5.1.msi")
         };

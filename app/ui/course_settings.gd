@@ -11,7 +11,7 @@ const KEEP_INFO_TOOLTIP: String = (
 	+ "changes how the world looks, regenerate it from the course page."
 )
 const DETAIL_INFO_TOOLTIP: String = (
-	"Want more detailed 3D worlds? Download the regions you ride in, then "
+	"For more detailed 3D worlds, download the regions you ride in, then "
 	+ "open a course to save that map detail in its .oqc file. Share the file, "
 	+ "and the other rider can use the detail offline without downloading the region."
 )

@@ -1,4 +1,4 @@
-//! Worlds authored outside ORQWA in the app (R268–R271): imported whole, each route a ride,
+//! Worlds authored outside ORQWA in the app (R282–R285): imported whole, each route a ride,
 //! ridden as authored without building or fetching anything, never shared or renamed.
 
 use std::path::{Path, PathBuf};

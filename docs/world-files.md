@@ -1,7 +1,7 @@
 # ORQWA World files (`.oqx`), format 1
 
 The specification of world files: complete worlds an author builds outside ORQWA and riders
-ride as they are ([ADR 0042](adr/0042-world-files.md), R268–R271). It is written for authors
+ride as they are ([ADR 0042](adr/0042-world-files.md), R282–R285). It is written for authors
 and for tools that write world files. ORQWA refuses a file that breaks a rule below and says
 which rule.
 

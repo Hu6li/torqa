@@ -1111,7 +1111,7 @@ async fn chosen(
 ) -> Result<SharedActivity, String> {
     let mut name = String::new();
     let (course_id, course_key) = if let Some(path) = &course {
-        // Worlds are not shared from ORQWA (R271).
+        // Worlds are not shared from ORQWA (R285).
         if crate::authored::WorldRoute::parse(path).is_some() {
             return Err(crate::failure::Kind::WorldGroup.message().to_owned());
         }

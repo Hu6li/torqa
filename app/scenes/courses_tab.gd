@@ -728,7 +728,7 @@ func _on_file_selected(picked: String) -> void:
 	_status.hide()
 	var extension: String = path.get_extension().to_lower()
 	if extension == "oqx":
-		# A world's routes keep their author's names (R268): nothing to name.
+		# A world's routes keep their author's names (R282): nothing to name.
 		_importing = "oqc"
 		_orqwa.import_course(path)
 		return

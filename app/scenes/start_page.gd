@@ -224,7 +224,7 @@ func _on_ride_requested(options: Dictionary, ghost: Dictionary) -> void:
 		return
 	_detail.show_status("")
 	if not _devices.connect_selected():
-		_detail.show_status(tr("No trainer connected — choose one under Devices."))
+		_detail.show_status(tr("No trainer connected. Choose one under Devices."))
 		_tabs.current_tab = Tab.DEVICES
 		return
 	_pending_ride = [options, ghost]
@@ -238,7 +238,7 @@ func _on_workout_requested(workout: Dictionary, course_path: String) -> void:
 		_tabs.current_tab = Tab.GROUP_RIDES
 		return
 	if not _devices.connect_selected():
-		_workouts.show_status(tr("No trainer connected — choose one under Devices."))
+		_workouts.show_status(tr("No trainer connected. Choose one under Devices."))
 		_tabs.current_tab = Tab.DEVICES
 		return
 	_pending_workout = workout
