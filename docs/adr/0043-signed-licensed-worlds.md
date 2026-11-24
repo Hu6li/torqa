@@ -164,6 +164,23 @@ signature.json   the working key's certificate and both signatures over manifest
   open source; only the keys are secret. Private keys are kept encrypted with a password and
   never stored in CI.
 
+### A demo world (later stage)
+
+Every rider can try a world without buying one: a **demo world**, signed by the maintainers
+and not encrypted, so it opens without activation in every official ORQWA.
+
+- **Downloaded on request, not built in.** A world is gigabytes; built into ORQWA it would
+  grow every installer, every update and the Android APK by as much. **Courses** offers
+  **Get the demo world**; ORQWA downloads it once, resuming an interrupted download, checks it
+  like any import and adds it to `worlds/`. The small sample course (R95) stays built in for
+  riding offline at once.
+- **Hosted with ORQWA's releases** on GitHub, which ORQWA already contacts for updates: no new
+  server. A newer ORQWA may name a newer demo; it replaces the old one by world id, and rides on
+  it are kept.
+- **Openly licensed.** Shipped by ORQWA's project and readable by anyone, it carries a licence
+  that allows redistribution (R47) and must hold nothing that is sold. The demo is the
+  Twann – Chasseral world; paid worlds are other worlds.
+
 ### Video courses (later stage)
 
 A world file may hold a video course: a route with `video` (the entry, its offset and sync
