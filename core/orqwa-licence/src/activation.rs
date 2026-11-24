@@ -1,6 +1,6 @@
 //! An activation: the activation server's signed statement that a licence opens a world on one
 //! device, with the world's content key sealed for that device's key. It never expires, so
-//! the world opens offline from then on (R276).
+//! the world opens offline from then on (R279).
 
 use aws_lc_rs::aead::{AES_256_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
 use serde::{Deserialize, Serialize};

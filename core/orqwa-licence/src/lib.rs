@@ -1,4 +1,4 @@
-//! Signed, encrypted and activated world files (ADR 0043, R275–R278).
+//! Signed, encrypted and activated world files (ADR 0043, R278–R281).
 //!
 //! ORQWA opens only world files the maintainers signed. Sold worlds are encrypted, and a device
 //! activated with a licence key opens them. Everything comes from aws-lc-rs, which ORQWA

@@ -5,7 +5,7 @@
 //! is there, and checks each part again as it reads it: the file may have changed on disk since.
 //! Nothing here writes to, repairs or deletes a world file.
 //!
-//! Only files the maintainers signed open (ADR 0043, R275): `manifest.json` lists every other
+//! Only files the maintainers signed open (ADR 0043, R278): `manifest.json` lists every other
 //! entry with its SHA-512 and `signature.json` signs it. The signature is checked before
 //! anything else is read, and each entry against its hash whenever it is read. Encrypted parts
 //! open with the content key an activation gives ([`WorldFile::unlock`]).
@@ -83,13 +83,13 @@ pub enum WorldError {
     /// The file breaks a rule of the format: which, and where.
     #[error("{0}")]
     Invalid(String),
-    /// The file has no signature (R275).
+    /// The file has no signature (R278).
     #[error("this world is not signed by ORQWA")]
     Unsigned,
-    /// The signature, its key or the world was refused (R275, R277).
+    /// The signature, its key or the world was refused (R278, R280).
     #[error("{0}")]
     Licence(#[from] LicenceError),
-    /// An encrypted part was asked for before the world was unlocked (R276).
+    /// An encrypted part was asked for before the world was unlocked (R279).
     #[error("this world is locked: activate it to ride it")]
     Locked,
 }
@@ -761,7 +761,7 @@ pub fn read_description(path: &Path, trust: &Trust) -> Result<Description, World
     Ok(signed(&mut open_zip(path)?, Some(trust))?.description)
 }
 
-/// Checks a whole world file against the format (R268, R275): its signature, its archive, its
+/// Checks a whole world file against the format (R268, R278): its signature, its archive, its
 /// description and every part it names, each read to its last byte and compared with its
 /// signed hash. Encrypted parts are checked against their hash and size only; their content is
 /// checked whenever they are read unlocked. Run on a worker: it reads gigabytes.

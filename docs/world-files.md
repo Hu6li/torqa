@@ -4,7 +4,7 @@ The specification of world files: complete worlds an author builds outside ORQWA
 ride as they are ([ADR 0042](adr/0042-world-files.md), R268–R271). It is written for authors
 and for tools that write world files. ORQWA refuses a file that breaks a rule below and says
 which rule. ORQWA opens only files the maintainers signed, and sold worlds are encrypted and
-activated per device ([ADR 0043](adr/0043-signed-licensed-worlds.md), R275–R277).
+activated per device ([ADR 0043](adr/0043-signed-licensed-worlds.md), R278–R280).
 
 ## The file
 
@@ -317,7 +317,7 @@ Every world file is signed by a maintainers' world key; ORQWA refuses any other
   prefix, then each chunk sealed with the nonce of the prefix and its 32-bit number, with a
   flag for the last chunk as associated data. Its key is HKDF-SHA-512 from the content key,
   with the entry's name as information.
-- ORQWA opens encrypted entries only on a device activated for the world (R276).
+- ORQWA opens encrypted entries only on a device activated for the world (R279).
 
 ## Checking a file
 
