@@ -118,7 +118,7 @@ UTF-8 bytes without control characters. The library shows their codes and names 
 for country search, filters and groups. ORQWA fetches nothing to infer them. Omission or an
 empty list means unknown; routes of a world with `origin.located: false` must omit them or
 use an empty list. Existing format-1 files without this metadata still open.
-Single-country world cards show the localized country name directly, with the code on hover.
+World cards show country codes, with localized names on hover, like other course cards.
 
 World-file routes appear under the library's **World** type, separately from generated **3D**
 and **Video** courses. Their cards carry a **World** pill beside the name, matching the
