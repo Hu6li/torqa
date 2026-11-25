@@ -407,9 +407,7 @@ static func _make_scene(
 	var document: GLTFDocument = GLTFDocument.new()
 	var state: GLTFState = GLTFState.new()
 	var node: Node3D = null
-	var readable: PackedByteArray = bytes
-	if not provided.is_empty():
-		readable = AuthoredMaterials.with_placeholders(bytes, provided.keys())
+	var readable: PackedByteArray = AuthoredMaterials.readable(bytes, provided)
 	if document.append_from_buffer(readable, "", state) == OK:
 		var cutouts: Array[Array] = AuthoredMaterials.prepare(state, provided)
 		node = document.generate_scene(state) as Node3D

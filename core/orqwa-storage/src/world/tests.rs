@@ -317,9 +317,10 @@ fn gltf_is_self_contained_static_and_within_its_extensions() {
             lod,
             glb(|g| {
                 g["extensionsUsed"] = json!(["KHR_draco_mesh_compression"]);
+                g["extensionsRequired"] = json!(["KHR_draco_mesh_compression"]);
             }),
         ),
-        "not allowed",
+        "needs KHR_draco_mesh_compression",
     );
     refused(
         &with(
@@ -507,6 +508,110 @@ fn repeated_images_are_stored_once_when_a_world_is_packed() {
     share_textures(&folder).unwrap();
     seal(&folder, &world, &sealer(), &trust())
         .expect("the textures the files name are listed again");
+    std::fs::remove_file(world).unwrap();
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[track_caller]
+fn accepted(entries: &[(String, Vec<u8>)]) {
+    let path = archive(entries);
+    let checked = validate(&path, &trust());
+    std::fs::remove_file(path).unwrap();
+    checked.expect("accepted");
+}
+
+/// A section drawing its texture from a PNG, with a newer extension's GPU image beside it.
+fn with_gpu_image(image: Value) -> Vec<u8> {
+    glb(|g| {
+        g["extensionsUsed"] = json!(["KHR_texture_basisu"]);
+        g["textures"][0]["extensions"] = json!({"KHR_texture_basisu": {"source": 1}});
+        g["images"].as_array_mut().unwrap().push(image);
+        g["materials"][0]["extensions"] = json!({"VENDOR_detail": {"layerTexture": {"index": 9}}});
+    })
+}
+
+#[test]
+fn a_newer_optional_extension_leaves_a_world_readable() {
+    let lod = "sections/0/lod0.glb";
+    // In the file: its image of a type this ORQWA does not read, its data its own.
+    accepted(&with(
+        lod,
+        with_gpu_image(json!({"bufferView": 0, "mimeType": "image/ktx2"})),
+    ));
+    // Beside it, a file of an extension the world uses.
+    let mut entries = with_description(|d| {
+        d["extensions_used"] = json!(["ORQWA_gpu_textures"]);
+    });
+    entries.retain(|(name, _)| name != lod);
+    entries.push((
+        lod.into(),
+        with_gpu_image(json!({"uri": "../../ext/ORQWA_gpu_textures/wall.ktx2"})),
+    ));
+    entries.push((
+        "ext/ORQWA_gpu_textures/wall.ktx2".into(),
+        b"KTX 20".to_vec(),
+    ));
+    accepted(&entries);
+    let path = archive(&entries);
+    let world = WorldFile::open(&path, &trust()).unwrap();
+    assert!(world.glb(lod).is_ok(), "read as glTF without the extension");
+    drop(world);
+    std::fs::remove_file(path).unwrap();
+    // A texture drawn by the file itself stays PNG, JPEG or WebP.
+    refused(
+        &with(
+            lod,
+            glb(|g| g["images"][0]["mimeType"] = json!("image/ktx2")),
+        ),
+        "PNG, JPEG or WebP",
+    );
+}
+
+#[test]
+fn an_extension_brings_files_only_when_the_world_uses_it() {
+    let lod = "sections/0/lod0.glb";
+    refused(
+        &with("ext/ORQWA_gpu_textures/wall.ktx2", b"KTX 20".to_vec()),
+        "not named by world.json",
+    );
+    refused(
+        &with(
+            lod,
+            with_gpu_image(json!({"uri": "../../ext/ORQWA_gpu_textures/wall.ktx2"})),
+        ),
+        "neither a texture nor an extension's file",
+    );
+    refused(
+        &with_description(|d| {
+            d["extensions_used"] = json!(["ORQWA_gpu_textures"]);
+            d["extensions_required"] = json!(["ORQWA_gpu_textures"]);
+        }),
+        "needs ORQWA_gpu_textures",
+    );
+}
+
+#[test]
+fn an_extensions_files_are_sealed_with_the_world() {
+    let folder = folder_with_repeated_images();
+    let mut description: Value =
+        serde_json::from_slice(&std::fs::read(folder.join(DESCRIPTION)).unwrap()).unwrap();
+    description["extensions_used"] = json!(["ORQWA_gpu_textures"]);
+    std::fs::write(
+        folder.join(DESCRIPTION),
+        serde_json::to_vec(&description).unwrap(),
+    )
+    .unwrap();
+    let file = folder.join("ext/ORQWA_gpu_textures/tiles/wall.ktx2");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, b"KTX 20").unwrap();
+    let world = folder.with_extension("oqx");
+    seal(&folder, &world, &sealer(), &trust()).expect("sealed with its extension's file");
+    let mut zip = ZipArchive::new(File::open(&world).unwrap()).unwrap();
+    assert!(
+        zip.by_name("ext/ORQWA_gpu_textures/tiles/wall.ktx2")
+            .is_ok()
+    );
+    drop(zip);
     std::fs::remove_file(world).unwrap();
     std::fs::remove_dir_all(folder).unwrap();
 }

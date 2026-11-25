@@ -12,6 +12,17 @@ const MAX_LAYERS: int = 8
 const DARKEST_MEAN: float = 0.02
 ## Set on a cut-out texture once its mipmaps keep its cover: a shared one is finished once.
 const CUTOUT_FINISHED: StringName = &"orqwa_cutout_finished"
+## The glTF extensions this ORQWA draws, as the core knows them (`glb::ALLOWED`). A world may
+## use newer ones, never require them: they are left out before Godot reads a file, so it draws
+## what this ORQWA understands, whatever Godot itself knows.
+const KNOWN_EXTENSIONS: Array[String] = [
+	"KHR_texture_transform",
+	"KHR_materials_emissive_strength",
+	"KHR_materials_unlit",
+	"KHR_mesh_quantization",
+	"EXT_texture_webp",
+	"ORQWA_terrain_layers",
+]
 const GLB_MAGIC: int = 0x46546C67
 const JSON_CHUNK: int = 0x4E4F534A
 const BIN_CHUNK: int = 0x004E4942
@@ -33,7 +44,7 @@ static var _shared_lock: Mutex = Mutex.new()
 ## Gives the textures of `state` mipmaps, so distant ground and façades do not shimmer, at
 ## most [member texture_cap] in size, and the same texture to every section carrying the same
 ## image; `provided` are the world's shared textures, by image index, standing in for the
-## placeholders [method with_placeholders] put there (null: one that could not be read).
+## placeholders [method readable] put there (null: one that could not be read).
 ## Returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]` pairs,
 ## for `finish_cutouts` on the main thread.
 static func prepare(state: GLTFState, provided: Dictionary[int, Texture2D] = {}) -> Array[Array]:
@@ -96,13 +107,85 @@ static func glb_json(bytes: PackedByteArray) -> Dictionary:
 	return parsed if parsed is Dictionary else {}
 
 
-## `bytes`, a `.glb`, with the images at `indices`, shared by `uri`, replaced by a pixel stored
-## in the file: Godot reads glTF from memory only with every image inside it. [method prepare]
-## puts the shared textures in their place.
-static func with_placeholders(bytes: PackedByteArray, indices: Array[int]) -> PackedByteArray:
+## `bytes`, a `.glb`, as Godot can read it for this ORQWA: without the extensions it does not
+## know, and with a pixel stored in the file for each image `provided` stands in for (shared by
+## `uri`) and each image only those extensions used. Godot reads glTF from memory only with
+## every image inside it; [method prepare] puts the shared textures in their place. A file with
+## none of these is returned as it is.
+static func readable(
+	bytes: PackedByteArray, provided: Dictionary[int, Texture2D]
+) -> PackedByteArray:
 	var gltf: Dictionary = glb_json(bytes)
-	if gltf.is_empty() or indices.is_empty():
+	if gltf.is_empty():
 		return bytes
+	var stripped: bool = _strip_unknown(gltf)
+	var swapped: Array[int] = provided.keys()
+	var drawn: Dictionary[int, bool] = drawn_images(gltf)
+	var images: Array = gltf.get("images", [])
+	for index: int in images.size():
+		if drawn.has(index) or swapped.has(index) or not images[index] is Dictionary:
+			continue
+		var image: Dictionary = images[index]
+		var mime: String = image.get("mimeType", "")
+		if image.has("uri") or not mime in ["image/png", "image/jpeg", "image/webp"]:
+			swapped.append(index)
+	if swapped.is_empty() and not stripped:
+		return bytes
+	return _rewritten(bytes, gltf, swapped)
+
+
+## The images textures draw, by index: those an extension this ORQWA does not know uses are
+## not among them.
+static func drawn_images(gltf: Dictionary) -> Dictionary[int, bool]:
+	var drawn: Dictionary[int, bool] = {}
+	for texture: Variant in gltf.get("textures", []):
+		if not texture is Dictionary:
+			continue
+		var described: Dictionary = texture
+		var sources: Array = [described.get("source")]
+		if described.get("extensions") is Dictionary:
+			var extensions: Dictionary = described["extensions"]
+			if extensions.get("EXT_texture_webp") is Dictionary:
+				var webp: Dictionary = extensions["EXT_texture_webp"]
+				sources.append(webp.get("source"))
+		for source: Variant in sources:
+			if source is int or source is float:
+				var number: float = source
+				drawn[int(number)] = true
+	return drawn
+
+
+## Takes the extensions this ORQWA does not know out of `value`, a glTF's JSON or a part of it;
+## whether there were any.
+static func _strip_unknown(value: Variant) -> bool:
+	var stripped: bool = false
+	if value is Dictionary:
+		var map: Dictionary = value
+		for key: String in ["extensionsUsed", "extensionsRequired"]:
+			if map.get(key) is Array:
+				var names: Array = map[key]
+				var kept: Array = names.filter(
+					func(n: Variant) -> bool: return n in KNOWN_EXTENSIONS
+				)
+				stripped = stripped or kept.size() != names.size()
+				map[key] = kept
+		if map.get("extensions") is Dictionary:
+			var extensions: Dictionary = map["extensions"]
+			for name: Variant in extensions.keys():
+				if not name in KNOWN_EXTENSIONS:
+					extensions.erase(name)
+					stripped = true
+		for child: Variant in map.values():
+			stripped = _strip_unknown(child) or stripped
+	elif value is Array:
+		for child: Variant in value:
+			stripped = _strip_unknown(child) or stripped
+	return stripped
+
+
+static func _rewritten(
+	bytes: PackedByteArray, gltf: Dictionary, indices: Array[int]
+) -> PackedByteArray:
 	var json_length: int = bytes.decode_u32(12)
 	var bin: PackedByteArray = PackedByteArray()
 	if bytes.size() >= 28 + json_length and bytes.decode_u32(24 + json_length) == BIN_CHUNK:
@@ -120,7 +203,7 @@ static func with_placeholders(bytes: PackedByteArray, indices: Array[int]) -> Pa
 	buffer["byteLength"] = bin.size()
 	while bin.size() % 4 != 0:
 		bin.append(0)
-	var images: Array = gltf["images"]
+	var images: Array = gltf.get("images", [])
 	for index: int in indices:
 		images[index] = {"bufferView": views.size() - 1, "mimeType": "image/png"}
 	var json: PackedByteArray = JSON.stringify(gltf, "", false, true).to_utf8_buffer()

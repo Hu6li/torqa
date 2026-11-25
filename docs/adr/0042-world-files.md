@@ -136,6 +136,13 @@ Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
   external, and the archive still holds nothing its description does not name. This is plain
   glTF: an unpacked world opens in any viewer with its textures. `orqwa-cli world-share` moves
   repeated images there for any tool before packing.
+- *Amended 2026-11-25:* worlds stay readable by older ORQWA when they use something newer. A
+  `.glb` may use glTF extensions ORQWA does not know, as glTF intends, as long as it does not
+  require them. ORQWA leaves them out and draws the file without them: a texture from its PNG
+  beside a later GPU-compressed image. Requiring an unknown extension asks the rider to update.
+  A world extension (`extensions_used` in `world.json`) brings files of its own under
+  `ext/<extension>/`, signed and left unread by an ORQWA that does not know it. Without these
+  rules every new feature would have needed a new format and locked out every earlier ORQWA.
 - World files are large: a realistic 20 km world is expected at several gigabytes. They use
   ZIP64 and higher limits than course files; [world-files.md](../world-files.md) sets them.
 - Authored worlds look the same in every season and weather. Opt-in material tags that let

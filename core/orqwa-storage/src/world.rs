@@ -349,12 +349,15 @@ enum Part {
     Sky,
     Preview,
     Texture,
+    /// A file of an extension the world uses, under `ext/<extension>/`: read only by an ORQWA
+    /// that knows the extension.
+    Extension,
 }
 
 impl Part {
     fn limit(self) -> u64 {
         match self {
-            Self::Glb | Self::Instances => MAX_PART_BYTES,
+            Self::Glb | Self::Instances | Self::Extension => MAX_PART_BYTES,
             Self::Route => MAX_ROUTE_BYTES,
             Self::Sky => MAX_SKY_BYTES,
             Self::Preview => MAX_PREVIEW_BYTES,
@@ -368,6 +371,18 @@ pub const KNOWN_EXTENSIONS: &[&str] = &[];
 const MAX_EXTENSIONS: usize = 64;
 
 impl Description {
+    /// Whether `name` is a file of an extension the world uses: `ext/<extension>/…`. An
+    /// extension brings files of its own this way; an ORQWA that does not know it leaves them
+    /// unread, and the signature covers them all the same.
+    #[must_use]
+    pub fn extension_file(&self, name: &str) -> bool {
+        name.strip_prefix("ext/")
+            .and_then(|rest| rest.split_once('/'))
+            .is_some_and(|(extension, file)| {
+                !file.is_empty() && self.extensions_used.iter().any(|used| used == extension)
+            })
+    }
+
     /// Extensions follow glTF's rules: every one used is listed in `extensions_used`, once;
     /// required ones are among them; data comes only for listed ones.
     fn check_extensions(&self) -> Result<(), WorldError> {
@@ -589,15 +604,27 @@ pub fn resolve(glb: &str, uri: &str) -> Option<String> {
 }
 
 /// That every image `glb` shares by `uri` is one of `textures`.
+/// That every image `glb` draws by `uri` is one of the world's textures, and every image only
+/// its extensions use is a texture or a file of an extension the world uses.
 fn shares_textures(
     glb: &str,
-    shared: &[String],
+    checked: &glb::Checked,
+    description: &Description,
     textures: impl Fn(&str) -> bool,
 ) -> Result<(), WorldError> {
-    for uri in shared {
+    for uri in &checked.shared {
         if !resolve(glb, uri).is_some_and(|entry| textures(&entry)) {
             return Err(invalid(format!(
                 "{glb}: image {uri:?} is not one of world.json's textures"
+            )));
+        }
+    }
+    for uri in &checked.foreign {
+        let found = resolve(glb, uri)
+            .is_some_and(|entry| textures(&entry) || description.extension_file(&entry));
+        if !found {
+            return Err(invalid(format!(
+                "{glb}: image {uri:?} is neither a texture nor an extension's file"
             )));
         }
     }
@@ -928,6 +955,8 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
         let at = |e| prefixed(&name, e);
         let part = if name == DESCRIPTION {
             None
+        } else if description.extension_file(&name) {
+            Some(Part::Extension)
         } else {
             Some(
                 *parts
@@ -951,7 +980,7 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
                     match part {
                         Part::Glb => {
                             let checked = glb::check_stream(&mut hashing, declared).map_err(at)?;
-                            shares_textures(&name, &checked.shared, |entry| {
+                            shares_textures(&name, &checked, &description, |entry| {
                                 parts.get(entry) == Some(&Part::Texture)
                             })?;
                             checked.read
@@ -970,6 +999,8 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
                         Part::Sky | Part::Preview | Part::Texture => {
                             image(&mut hashing, part == Part::Preview).map_err(at)?
                         }
+                        // Hashed, never read: the extension's to define.
+                        Part::Extension => 0,
                     }
                 }
             })
@@ -1142,7 +1173,9 @@ impl WorldFile {
         let bytes = self.read(name)?;
         let checked = glb::check_stream(&mut bytes.as_slice(), bytes.len() as u64)
             .map_err(|e| prefixed(name, e))?;
-        shares_textures(name, &checked.shared, |entry| self.textures.contains(entry))?;
+        shares_textures(name, &checked, &self.description, |entry| {
+            self.textures.contains(entry)
+        })?;
         Ok(bytes)
     }
 
@@ -1200,8 +1233,34 @@ pub struct Sealer<'a> {
     pub certificate: Signed,
 }
 
-/// Seals the folder `from` into the world file `to`: `world.json` and every part it names,
-/// under their names relative to the folder, and signs it, then checks the
+/// The files of the extensions a world uses, in its folder `from`: everything under
+/// `ext/<extension>/`, by its name in the archive.
+fn extension_files(from: &Path, description: &Description) -> Result<Vec<String>, WorldError> {
+    let mut found = Vec::new();
+    for extension in &description.extensions_used {
+        let mut folders = vec![format!("ext/{extension}")];
+        while let Some(folder) = folders.pop() {
+            let Ok(listing) = std::fs::read_dir(from.join(&folder)) else {
+                continue;
+            };
+            for entry in listing {
+                let entry = entry?;
+                let name = format!("{folder}/{}", entry.file_name().to_string_lossy());
+                if entry.file_type()?.is_dir() {
+                    folders.push(name);
+                } else {
+                    found.push(name);
+                }
+            }
+        }
+    }
+    found.sort();
+    Ok(found)
+}
+
+/// Seals the folder `from` into the world file `to`: `world.json`, every part it names and the
+/// files of the extensions it uses, under their names relative to the folder, and signs it,
+/// then checks the
 /// result as importing would with `trust`. Written beside `to` first and moved there once
 /// checked, so a failed seal leaves nothing. For the maintainers' tools (ADR 0043).
 ///
@@ -1231,13 +1290,21 @@ pub fn seal(
         // Each part streams from the folder into the archive, hashed on the way: a world may
         // be far larger than memory. The manifest and its signature come last, once every hash
         // is known; readers find entries by name.
-        for (name, part) in
-            std::iter::once((DESCRIPTION, None)).chain(parts.iter().map(|(n, p)| (*n, Some(*p))))
+        let extension_files = extension_files(from, &description)?;
+        for (name, part) in std::iter::once((DESCRIPTION, None))
+            .chain(parts.iter().map(|(n, p)| (*n, Some(*p))))
+            .chain(
+                extension_files
+                    .iter()
+                    .map(|n| (n.as_str(), Some(Part::Extension))),
+            )
         {
             let mut input = io::BufReader::new(File::open(from.join(name))?);
             let options = match part {
                 Some(Part::Sky | Part::Preview | Part::Texture) => stored,
-                Some(Part::Glb | Part::Instances | Part::Route) | None => deflated,
+                Some(Part::Glb | Part::Instances | Part::Route | Part::Extension) | None => {
+                    deflated
+                }
             };
             zip.start_file(name, options)?;
             let mut hashing = HashingWriter::new(&mut zip);

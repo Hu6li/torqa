@@ -11,8 +11,8 @@ their own licence ([ADR 0043](adr/0043-signed-licensed-worlds.md), R295–R297).
 A world file is a ZIP archive (ZIP64 allowed, one disk) with the extension `.oqx`. Entries are
 stored or deflated. Names use `/`, are relative, and contain no `..`, backslashes, drive
 letters, control characters or names Windows reserves. There are no directories, links or
-duplicate names, and **no entry that `world.json` does not name**, apart from `manifest.json`
-and `signature.json`.
+duplicate names, and **no entry that `world.json` does not name**, apart from `manifest.json`,
+`signature.json` and the files of the extensions the world uses (`ext/`).
 
 ```
 world.json                 required: the description below
@@ -26,6 +26,7 @@ assets/<…>.glb             models placed many times
 horizon.glb                optional: the far landscape
 sky/<…>.png|jpg|webp       optional: a sky panorama
 textures/<…>.png|jpg|webp  optional: images several .glb files share
+ext/<extension>/<…>        optional: files of an extension in extensions_used
 ```
 
 | Limit | |
@@ -144,7 +145,7 @@ format, the way glTF does:
 ```json
 "extensions_used": ["ORQWA_ambient_sound"],
 "extensions_required": [],
-"extensions": { "ORQWA_ambient_sound": { "file": "sound/waves.ogg" } }
+"extensions": { "ORQWA_ambient_sound": { "file": "ext/ORQWA_ambient_sound/waves.ogg" } }
 ```
 
 - `extensions_used` names every extension the world uses, each once. A name is a vendor prefix
@@ -153,6 +154,10 @@ format, the way glTF does:
   `extensions_used`.
 - `extensions` holds each extension's own data, by its name, in the shape the extension
   defines; only extensions in `extensions_used` may have an entry.
+- An extension's files lie under `ext/<its name>/`, in any folders and of any type, at most
+  1 GiB each. They are signed like every other entry. An ORQWA that does not know the
+  extension leaves them unread; files under `ext/` of an extension not in `extensions_used` are
+  refused.
 - An ORQWA that does not know an extension ignores it, and shows the world without it. If the
   extension is required, ORQWA does not open the world and asks for an update instead.
 - This version of ORQWA knows no world extension yet. Each one ORQWA learns is specified here.
@@ -260,14 +265,20 @@ other files:
 - One JSON chunk, then at most one BIN chunk; the header's length is the entry's size.
 - At most one buffer, without `uri`, no longer than the BIN chunk. Buffer views and accessors
   lie within it.
-- Images come from buffer views, as `image/png`, `image/jpeg` or, with `EXT_texture_webp`,
-  `image/webp`, or are one of the world's shared textures, named by `uri` (below). No other
-  `uri`.
+- Images a texture draws (its `source`, or `EXT_texture_webp`'s) come from buffer views, as
+  `image/png`, `image/jpeg` or, with `EXT_texture_webp`, `image/webp`, or are one of the
+  world's shared textures, named by `uri` (below).
+- Images only an extension uses may be of any type. In the file, or named by `uri` as a shared
+  texture or a file of a world extension under `ext/` (`../../ext/ORQWA_gpu_textures/wall.ktx2`).
+  No other `uri`.
 - Static scenes: no `animations`, `skins` or `cameras`. Nodes form trees.
 - No sparse accessors.
-- Extensions used are among `KHR_texture_transform`, `KHR_materials_emissive_strength`,
+- ORQWA draws `KHR_texture_transform`, `KHR_materials_emissive_strength`,
   `KHR_materials_unlit`, `KHR_mesh_quantization`, `EXT_texture_webp` and
-  `ORQWA_terrain_layers`. Only the first five may be required.
+  `ORQWA_terrain_layers`. Only the first five may be required. A file may use other
+  extensions, as glTF allows, without requiring them: ORQWA leaves them and their data out and
+  draws the file without them, for example a texture from its PNG beside a newer GPU image. A
+  file requiring an extension ORQWA does not know asks for an update instead.
 
 Materials are glTF's metallic-roughness PBR, drawn as they are, with Godot's standard
 material. Alpha modes work as glTF defines them; use `MASK` for leaves and fences. A `MASK`

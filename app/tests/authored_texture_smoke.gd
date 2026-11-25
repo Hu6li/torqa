@@ -45,6 +45,7 @@ func _run() -> void:
 		"Ultra shows the world as its author made it: full reach, textures at their own size"
 	)
 	_check_shared_by_uri()
+	_check_newer_extensions()
 	if not _failed:
 		print("AUTHORED TEXTURE SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -87,11 +88,43 @@ func _check_shared_by_uri() -> void:
 	AuthoredMaterials.forget_shared()
 
 
+## A newer world's section: its texture has a GPU image beside the PNG, from an extension this
+## ORQWA does not know, and its material carries that vendor's data. It is drawn from the PNG.
+func _check_newer_extensions() -> void:
+	var plain: PackedByteArray = _section_with_image(Color(0.9, 0.2, 0.2))
+	var gltf: Dictionary = AuthoredMaterials.glb_json(plain)
+	gltf["extensionsUsed"] = ["KHR_texture_basisu", "VENDOR_detail"]
+	var images: Array = gltf["images"]
+	images.append({"bufferView": 0, "mimeType": "image/ktx2"})
+	images.append({"uri": "../../ext/ORQWA_gpu_textures/wall.ktx2"})
+	var textures: Array = gltf["textures"]
+	var texture: Dictionary = textures[0]
+	texture["extensions"] = {"KHR_texture_basisu": {"source": 1}}
+	var materials: Array = gltf["materials"]
+	var material: Dictionary = materials[0]
+	material["extensions"] = {"VENDOR_detail": {"layerTexture": {"index": 9}}}
+	var newer: PackedByteArray = _with_json(plain, gltf)
+	_check(
+		AuthoredTextures.shared("sections/0/lod0.glb", newer).is_empty(),
+		"an extension's own images are never asked for"
+	)
+	var albedo: Texture2D = _albedo(newer)
+	_check(
+		albedo != null and albedo.get_width() == 1024,
+		"drawn from its PNG, without the extension this ORQWA does not know"
+	)
+
+
 ## `glb` with its one image named by `uri` instead of stored in it, as a world's section
 ## sharing it does.
 func _naming_shared(glb: PackedByteArray, uri: String) -> PackedByteArray:
 	var gltf: Dictionary = AuthoredMaterials.glb_json(glb)
 	gltf["images"] = [{"uri": uri}]
+	return _with_json(glb, gltf)
+
+
+## `glb` with its JSON chunk replaced by `gltf`.
+func _with_json(glb: PackedByteArray, gltf: Dictionary) -> PackedByteArray:
 	var json: PackedByteArray = JSON.stringify(gltf, "", false, true).to_utf8_buffer()
 	while json.size() % 4 != 0:
 		json.append(0x20)

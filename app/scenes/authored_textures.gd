@@ -30,7 +30,11 @@ static func shared(file: String, bytes: PackedByteArray) -> Dictionary[int, Stri
 	var found: Dictionary[int, String] = {}
 	var gltf: Dictionary = AuthoredMaterials.glb_json(bytes)
 	var images: Array = gltf.get("images", [])
+	# Images only extensions use are never read: this ORQWA draws without what it does not know.
+	var drawn: Dictionary[int, bool] = AuthoredMaterials.drawn_images(gltf)
 	for index: int in images.size():
+		if not drawn.has(index):
+			continue
 		if not images[index] is Dictionary:
 			continue
 		var image: Dictionary = images[index]

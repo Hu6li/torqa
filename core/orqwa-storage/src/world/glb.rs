@@ -10,7 +10,8 @@ use serde_json::{Map, Value};
 
 use super::{WorldError, invalid};
 
-/// Extensions a world's glTF may use.
+/// Extensions ORQWA knows in a world's glTF. Others may be used, never required: this ORQWA
+/// leaves them and their data aside, and draws the file as glTF without them.
 pub const ALLOWED: [&str; 6] = [
     "KHR_texture_transform",
     "KHR_materials_emissive_strength",
@@ -31,8 +32,11 @@ const BIN: u32 = 0x004E_4942;
 pub struct Checked {
     /// Bytes read: the header and the JSON chunk.
     pub read: u64,
-    /// The `uri` of every image outside the file.
+    /// The `uri` of every image outside the file that a texture draws.
     pub shared: Vec<String>,
+    /// The `uri` of images outside the file only extensions use, of any type: those this ORQWA
+    /// does not know are never read.
+    pub foreign: Vec<String>,
 }
 
 /// Checks a `.glb` of `length` bytes from `input`, reading its header and JSON. The BIN chunk's
@@ -76,8 +80,12 @@ pub fn check_stream(input: &mut impl Read, length: u64) -> Result<Checked, World
     }
     let gltf: Value =
         serde_json::from_slice(&json).map_err(|e| invalid(format!("glTF JSON: {e}")))?;
-    let shared = check(&gltf, bin)?;
-    Ok(Checked { read, shared })
+    let (shared, foreign) = check(&gltf, bin)?;
+    Ok(Checked {
+        read,
+        shared,
+        foreign,
+    })
 }
 
 fn le(bytes: &[u8], at: usize) -> u32 {
@@ -130,7 +138,7 @@ fn names(gltf: &Map<String, Value>, key: &str) -> Result<BTreeSet<String>, World
 }
 
 /// The checks on a parsed glTF with a BIN chunk of `bin` bytes, if any.
-fn check(gltf: &Value, bin: Option<u64>) -> Result<Vec<String>, WorldError> {
+fn check(gltf: &Value, bin: Option<u64>) -> Result<(Vec<String>, Vec<String>), WorldError> {
     let gltf = object(gltf, "glTF")?;
     let used = extensions(gltf)?;
     let views = buffer_views(gltf, bin)?;
@@ -138,7 +146,8 @@ fn check(gltf: &Value, bin: Option<u64>) -> Result<Vec<String>, WorldError> {
     for accessor in accessors {
         accessor_fits(object(accessor, "accessor")?, &views)?;
     }
-    let (textures, shared) = textures(gltf, views.len(), used.contains("EXT_texture_webp"))?;
+    let (textures, shared, foreign) =
+        textures(gltf, views.len(), used.contains("EXT_texture_webp"))?;
     let materials = array(gltf, "materials")?;
     for material in materials {
         texture_references(material, textures)?;
@@ -158,10 +167,10 @@ fn check(gltf: &Value, bin: Option<u64>) -> Result<Vec<String>, WorldError> {
         }
     }
     index(gltf.get("scene"), scenes.len(), "the scene")?;
-    Ok(shared)
+    Ok((shared, foreign))
 }
 
-/// glTF 2.0, static, with allowed extensions only; returns those used.
+/// glTF 2.0 and static; extensions it requires are ones ORQWA knows. Returns those used.
 fn extensions(gltf: &Map<String, Value>) -> Result<BTreeSet<String>, WorldError> {
     let asset = object(gltf.get("asset").unwrap_or(&Value::Null), "asset")?;
     if asset.get("version").and_then(Value::as_str) != Some("2.0")
@@ -173,13 +182,17 @@ fn extensions(gltf: &Map<String, Value>) -> Result<BTreeSet<String>, WorldError>
     }
     let used = names(gltf, "extensionsUsed")?;
     let required = names(gltf, "extensionsRequired")?;
-    if let Some(other) = used.iter().find(|e| !ALLOWED.contains(&e.as_str())) {
-        return Err(invalid(format!("extension {other} is not allowed")));
+    if let Some(other) = used.iter().find(|e| !extension_name(e)) {
+        return Err(invalid(format!("{other:?} is not an extension name")));
     }
     if required.contains(TERRAIN_LAYERS) || !required.is_subset(&used) {
         return Err(invalid(format!(
             "required extensions must be used, and {TERRAIN_LAYERS} never required"
         )));
+    }
+    // A newer extension the file cannot be drawn without: the rider needs a newer ORQWA.
+    if let Some(unknown) = required.iter().find(|e| !ALLOWED.contains(&e.as_str())) {
+        return Err(WorldError::NeedsExtension(unknown.clone()));
     }
     for key in ["animations", "skins", "cameras"] {
         if !array(gltf, key)?.is_empty() {
@@ -232,53 +245,70 @@ fn buffer_views(
 
 /// Images inside the file in allowed formats, textures pointing at them; returns the number
 /// of textures.
-/// Textures whose images are PNG, JPEG or WebP, inside the file or shared by `uri`; returns
-/// how many textures there are and the shared images' URIs.
+/// Textures whose images are PNG, JPEG or WebP, inside the file or shared by `uri`. Images no
+/// texture draws belong to extensions and may be of any type. Returns how many textures there
+/// are, the shared images' URIs and the URIs of images only extensions use.
 fn textures(
     gltf: &Map<String, Value>,
     views: usize,
     webp: bool,
-) -> Result<(usize, Vec<String>), WorldError> {
+) -> Result<(usize, Vec<String>, Vec<String>), WorldError> {
     let images = array(gltf, "images")?;
+    let samplers = array(gltf, "samplers")?;
+    let textures = array(gltf, "textures")?;
+    let mut drawn = BTreeSet::new();
+    for texture in textures {
+        let texture = object(texture, "texture")?;
+        drawn.extend(index(texture.get("source"), images.len(), "a texture")?);
+        index(texture.get("sampler"), samplers.len(), "a texture")?;
+        if webp
+            && let Some(Value::Object(extensions)) = texture.get("extensions")
+            && let Some(Value::Object(webp)) = extensions.get("EXT_texture_webp")
+        {
+            drawn.extend(index(webp.get("source"), images.len(), "a WebP texture")?);
+        }
+    }
     let format = |mime: Option<&str>| {
         matches!(mime, Some("image/png" | "image/jpeg")) || (webp && mime == Some("image/webp"))
     };
     let mut shared = Vec::new();
-    for image in images {
+    let mut foreign = Vec::new();
+    for (number, image) in images.iter().enumerate() {
         let image = object(image, "image")?;
         let mime = image.get("mimeType").and_then(Value::as_str);
+        let known = drawn.contains(&number);
         match (image.get("uri"), image.get("bufferView")) {
             (None, Some(view)) => {
                 index(Some(view), views, "an image")?;
-                if !format(mime) {
+                if known && !format(mime) {
                     return Err(invalid("images are PNG, JPEG or WebP"));
                 }
             }
             (Some(Value::String(uri)), None) => {
                 let by_name = mime_of(uri);
-                if !relative(uri) || !format(by_name) || mime.is_some_and(|m| Some(m) != by_name) {
+                let typed = format(by_name) && mime.is_none_or(|m| Some(m) == by_name);
+                if !relative(uri) || (known && !typed) {
                     return Err(invalid(format!(
                         "image uri {uri:?} is not a relative path to a PNG, JPEG or WebP"
                     )));
                 }
-                shared.push(uri.clone());
+                if known {
+                    shared.push(uri.clone());
+                } else {
+                    foreign.push(uri.clone());
+                }
             }
             _ => return Err(invalid("an image is in the file or named by one uri")),
         }
     }
-    let samplers = array(gltf, "samplers")?;
-    let textures = array(gltf, "textures")?;
-    for texture in textures {
-        let texture = object(texture, "texture")?;
-        index(texture.get("source"), images.len(), "a texture")?;
-        index(texture.get("sampler"), samplers.len(), "a texture")?;
-        if let Some(Value::Object(extensions)) = texture.get("extensions")
-            && let Some(Value::Object(webp)) = extensions.get("EXT_texture_webp")
-        {
-            index(webp.get("source"), images.len(), "a WebP texture")?;
-        }
-    }
-    Ok((textures.len(), shared))
+    Ok((textures.len(), shared, foreign))
+}
+
+/// An extension's name as glTF gives them: a prefix, an underscore, a name.
+fn extension_name(name: &str) -> bool {
+    (3..=64).contains(&name.len())
+        && name.contains('_')
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
 /// An image's type by its name's extension.
@@ -428,6 +458,17 @@ fn texture_references(value: &Value, textures: usize) -> Result<(), WorldError> 
     match value {
         Value::Object(map) => {
             for (key, child) in map {
+                // An extension this ORQWA does not know is its own to define.
+                if key == "extensions"
+                    && let Value::Object(extensions) = child
+                {
+                    for (name, data) in extensions {
+                        if ALLOWED.contains(&name.as_str()) {
+                            texture_references(data, textures)?;
+                        }
+                    }
+                    continue;
+                }
                 if key.ends_with("Texture")
                     || key == "albedo"
                     || key == "normal"
