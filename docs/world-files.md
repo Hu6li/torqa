@@ -351,10 +351,11 @@ lists what riders use:
 |---|---|
 | `key-new <file>` | A new key, encrypted, with its public half in `<file>.pub.json`. Roots and world keys are both made this way. |
 | `key-certify --root <root> --key <public> --name <name> <out>` | A root's certificate for a world key. A new world key needs no ORQWA update. |
-| `revocation-sign --root <root> <list> <out>` | A root-signed list of withdrawn keys and worlds, `{"sequence", "keys", "worlds"}`. |
 
 Keys and certificates are never overwritten. A root's public key is built into ORQWA by adding
-its `.pub.json` to `RELEASE_ROOTS` in `orqwa-licence`.
+its `.pub.json` to `RELEASE_ROOTS` in `orqwa-licence`. A key or a world version is withdrawn by
+adding it to `core/orqwa-licence/revocations.json` (`{"keys": [key id], "worlds": [{"id",
+"version"}]}`, without `version` for every version) before a release.
 
 ## What ORQWA does with a world file
 

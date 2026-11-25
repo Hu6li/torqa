@@ -260,7 +260,6 @@ mod tests {
         let signature = sign(&bytes, &dev::world_key(), dev::world_certificate()).unwrap();
         let roots = vec![dev::root().public().clone()];
         let world = Revocations {
-            sequence: 1,
             keys: vec![],
             worlds: vec![WithdrawnWorld {
                 id: "w".into(),
@@ -272,7 +271,6 @@ mod tests {
             Err(LicenceError::WorldWithdrawn)
         ));
         let key = Revocations {
-            sequence: 1,
             keys: vec![dev::world_key().public().id()],
             worlds: vec![],
         };

@@ -22,8 +22,6 @@ const SEEDS: usize = 64;
 pub enum Context {
     /// A root certifying a working key.
     Certificate,
-    /// A root withdrawing keys and worlds.
-    Revocations,
     /// A world key signing a world's manifest.
     Manifest,
 }
@@ -32,7 +30,6 @@ impl Context {
     fn label(self) -> &'static str {
         match self {
             Self::Certificate => "certificate",
-            Self::Revocations => "revocations",
             Self::Manifest => "manifest",
         }
     }

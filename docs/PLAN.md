@@ -1295,11 +1295,11 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R289)
 - [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R290–R291)
 - [x] ADR 0043: signed world files, sold as downloads without activation (R292–R295)
-- [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, withdrawal lists
-  that only add up; aws-lc-rs 1.19 as a direct dependency
+- [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, withdrawals in
+  `revocations.json` with each release; aws-lc-rs 1.19 as a direct dependency
 - [x] Signature, sizes and hashes checked in `orqwa_storage::world` before parts are read; the
   fuzzer reaches the parsers behind the signature
-- [x] `orqwa-cli` `key-new`, `key-certify`, `revocation-sign`, `world-seal` (streaming); the
+- [x] `orqwa-cli` `key-new`, `key-certify`, `world-seal` (streaming); the
   test world sealed with the development key; `orqwa-gd` and `orqwa-cli` refuse dev keys in
   release builds, which name them beside their version otherwise; tags need a release root
 - [x] World extensions in `world.json`, as in glTF: unknown optional ones ignored, unknown

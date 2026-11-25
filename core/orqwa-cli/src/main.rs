@@ -136,16 +136,6 @@ enum Command {
         /// Where to write the certificate.
         out: PathBuf,
     },
-    #[command(hide = true)]
-    RevocationSign {
-        /// The root's key.
-        #[arg(long)]
-        root: PathBuf,
-        /// The list: `{"sequence": n, "keys": [...], "worlds": [{"id", "version"}]}`.
-        list: PathBuf,
-        /// Where to write the signed list.
-        out: PathBuf,
-    },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -314,7 +304,6 @@ async fn main() -> Result<()> {
             name,
             out,
         } => worlds::key_certify(&root, &key, &name, &out),
-        Command::RevocationSign { root, list, out } => worlds::revocation_sign(&root, &list, &out),
         Command::SampleRides(args) => sample_rides::write(&args),
     }
 }

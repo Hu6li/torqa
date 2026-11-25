@@ -59,30 +59,30 @@ Options considered for the library:
 | Hashes | SHA-512 |
 | The maintainers' key files | PBKDF2-HMAC-SHA-512 (600,000 rounds), then AES-256-GCM |
 
-Each signature carries what it is for (a certificate, a withdrawal list, a manifest), so a
+Each signature carries what it is for (a certificate, a manifest), so a
 signature on one kind of document never passes for another. The suite has a name, so a later
 one can replace it in a new format without guessing.
 
 ### Keys and their rotation
 
 - **Root keys**: two hybrid key pairs, a primary and a backup, kept offline in separate
-  places. Only their public keys are built into ORQWA. A root signs certificates and withdrawal
-  lists, and nothing else. A new root comes with an ORQWA release; a root is withdrawn only if
+  places. Only their public keys are built into ORQWA. A root signs certificates for world
+  keys, and nothing else. A new root comes with an ORQWA release; a root is withdrawn only if
   it leaks. **Either root alone is trusted fully** (1 of 2): the backup exists so that losing
-  one root costs nothing. Lists only add withdrawals, so a leaked root cannot take one back; it
-  could still withdraw the other root and its keys, which stops new worlds until a release
-  removes the leaked root. Both are kept offline for that reason.
+  one root costs nothing. A leaked root could certify world keys of its own until a release
+  withdraws it, so both are kept offline.
 - **World keys** seal world files. Each has a certificate signed by a root, with its purpose,
   a name and both public keys. A certificate has no end date: a device's clock cannot be
   trusted, and a bought world must keep opening, so a key ends only by withdrawal. Every world
   file carries its certificate, so a world key is replaced by making a new one and having a
   root certify it. **ORQWA needs no update for that**, and files signed with the old key keep
   working.
-- **Withdrawals**: lists signed by a root, naming withdrawn keys and withdrawn versions of
-  worlds, built into each ORQWA release (no server delivers them). ORQWA merges every list a
-  trusted root signed: a withdrawal is never taken back. A mistaken one is undone only by a new
-  key. A world signed with a withdrawn key is sealed again and offered to its buyers. Fields a
-  later ORQWA adds to a list are ignored, not a reason to drop it.
+- **Withdrawals**: `core/orqwa-licence/revocations.json` lists withdrawn keys (roots
+  included) and withdrawn versions of worlds, and is built into each release. With no server,
+  a release is the only way withdrawals reach riders, so they need no signature of their own:
+  the release is the maintainers'. A world signed with a withdrawn key is sealed again and
+  offered to its buyers. A test checks the list's ids are well-formed; fields a later ORQWA
+  adds are ignored.
 - **Development root**: a separate root for tests, fuzzing and worlds still being built. ORQWA
   trusts it only when built with the `dev-keys` feature. The programs ORQWA ships (`orqwa-gd`,
   `orqwa-cli`) refuse to compile a release build that has it; tests and examples may. Godot's
@@ -118,7 +118,7 @@ signature.json   the world key's certificate and both signatures over manifest.j
 - **Content licences** of what goes into a sold world must allow selling it: own work, CC0 or
   CC-BY with credit, swisstopo data with its credit; no CC-BY-SA material and no OpenStreetMap
   data.
-- **Sealing tools** (`orqwa-cli key-new`, `key-certify`, `revocation-sign`, `world-seal`) are
+- **Sealing tools** (`orqwa-cli key-new`, `key-certify`, `world-seal`) are
   open source and left out of the CLI's help; only the keys are secret. Private keys are kept
   encrypted with a password and never stored in CI. Sealing streams each part into the file, so
   a world may be larger than memory.

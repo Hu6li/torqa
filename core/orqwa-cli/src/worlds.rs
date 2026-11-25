@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, Result, bail};
 use clap::Args;
-use orqwa_licence::keys::{Context, KeyPair, PublicKey};
-use orqwa_licence::trust::{self, Purpose, Revocations, Signed, Trust};
+use orqwa_licence::keys::{KeyPair, PublicKey};
+use orqwa_licence::trust::{self, Purpose, Signed, Trust};
 use orqwa_storage::world::{self, Sealer, WorldFile};
 
 /// Seal a world folder into a signed world file.
@@ -97,39 +97,6 @@ pub fn key_certify(root: &Path, public: &Path, name: &str, out: &Path) -> Result
     println!(
         "{} certified by root {} as {name}",
         public.id(),
-        root.public().id()
-    );
-    Ok(())
-}
-
-/// A root signs a list of withdrawals.
-pub fn revocation_sign(root: &Path, list: &Path, out: &Path) -> Result<()> {
-    let root = read_key(root)?;
-    let list: Revocations = read_json(list)?;
-    // A malformed id would withdraw nothing, silently.
-    for key in &list.keys {
-        if key.0.len() != 32
-            || !key
-                .0
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        {
-            bail!(
-                "{} is not a key id (32 lowercase hexadecimal digits)",
-                key.0
-            );
-        }
-    }
-    for world in &list.worlds {
-        if world.id.len() != 36 || world.id.chars().filter(|c| *c == '-').count() != 4 {
-            bail!("{} is not a world id (a UUID)", world.id);
-        }
-    }
-    let signed = Signed::sign(&list, Context::Revocations, &root)?;
-    write_new(out, &serde_json::to_string_pretty(&signed)?)?;
-    println!(
-        "withdrawals {} signed by root {}",
-        list.sequence,
         root.public().id()
     );
     Ok(())
