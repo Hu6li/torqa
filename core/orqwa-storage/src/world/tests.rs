@@ -505,7 +505,8 @@ fn repeated_images_are_stored_once_when_a_world_is_packed() {
     )
     .unwrap();
     share_textures(&folder).unwrap();
-    pack(&folder, &world).expect("the textures the files name are listed again");
+    seal(&folder, &world, &sealer(), &trust())
+        .expect("the textures the files name are listed again");
     std::fs::remove_file(world).unwrap();
     std::fs::remove_dir_all(folder).unwrap();
 }
