@@ -133,6 +133,9 @@ elevation], horizontally. ORQWA loads the sections nearest the rider first and l
 far behind. Each level of detail is drawn while the camera is less than `until_m` metres from
 the section's centre and further than the level before; the last level may leave `until_m`
 out and is drawn as far as the rider's view distance reaches. Levels are ordered nearest first.
+The graphics preset shortens every `until_m`, a section's and an asset's: Ultra keeps it, High
+draws to 75 %, Medium to 50 % and Low to 20 % of it, so a world made for a fast computer still
+fits a phone's memory.
 
 Sections should be a few hundred metres across: small enough to load in a moment, large enough
 not to need thousands of them.
@@ -238,6 +241,11 @@ material. Alpha modes work as glTF defines them; use `MASK` for leaves and fence
 material's base colour texture gets mipmaps that keep its cover: each smaller level holds as
 much of its area at or above `alphaCutoff` as the full image, so scattered leaves do not thin
 out and vanish as a tree shrinks on screen.
+
+An image several files carry, byte for byte, is loaded once and drawn by all of them, so a
+material's textures may repeat in every section without taking memory each time. Below Ultra,
+textures are halved on loading until no side is longer than the preset allows: 2048 pixels on
+High, 1024 on Medium and 512 on Low. Ultra draws them at their own size.
 
 ### Section backgrounds in the horizon
 

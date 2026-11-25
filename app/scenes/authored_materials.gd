@@ -11,28 +11,142 @@ const MAX_LAYERS: int = 8
 ## A layer's average colour is never darker than this, so a dark layer cannot blow up the base.
 const DARKEST_MEAN: float = 0.02
 
+## Textures are halved until no side is longer than this (0: as the author made them), set
+## by the graphics preset. A world's sections carry their textures at full size each: on
+## a phone they did not fit its memory.
+static var texture_cap: int = 0
+## Images several sections carry, made once and drawn by all: source bytes and cap → a weak
+## reference to the texture, so one goes when the last section using it does. Worlds repeat
+## their materials' images across sections; uncompressed per section, Twann – Chasseral asked
+## for several gigabytes near its start.
+static var _shared: Dictionary[String, WeakRef] = {}
+static var _shared_lock: Mutex = Mutex.new()
 
-## Gives the textures of `state` mipmaps, so distant ground and façades do not shimmer; and
-## returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]` pairs
-## without, for `finish_cutouts` on the main thread.
+
+## Gives the textures of `state` mipmaps, so distant ground and façades do not shimmer, at
+## most [member texture_cap] in size, and the same texture to every section carrying the same
+## image; returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]`
+## pairs without, for `finish_cutouts` on the main thread.
 static func prepare(state: GLTFState) -> Array[Array]:
 	_diffuse_materials(state)
 	var cutoffs: Dictionary[int, float] = _cutout_images(state)
 	var cutouts: Array[Array] = []
 	var images: Array[Texture2D] = state.get_images()
+	var replaced: Dictionary[Texture2D, Texture2D] = {}
 	for index: int in images.size():
 		var image_texture: ImageTexture = images[index] as ImageTexture
 		if image_texture == null:
 			continue
+		var key: String = _image_key(state, index)
+		var shared: ImageTexture = _shared_texture(key)
+		if shared != null:
+			replaced[image_texture] = shared
+			images[index] = shared
+			# The section that made it may go before it is shown and its cut-out finished.
+			if cutoffs.has(index):
+				cutouts.append([shared, cutoffs[index]])
+			continue
 		var image: Image = image_texture.get_image()
 		if image == null or image.has_mipmaps() or image.is_compressed():
 			continue
+		_cap(image)
 		if cutoffs.has(index):
+			image_texture.set_image(image)
 			cutouts.append([image_texture, cutoffs[index]])
-			continue
-		image.generate_mipmaps()
-		image_texture.set_image(image)
+		else:
+			image.generate_mipmaps()
+			image_texture.set_image(image)
+		# Shared only once made: a worker never finds one another is still working on.
+		var kept: ImageTexture = _share(key, image_texture)
+		if kept != image_texture:
+			replaced[image_texture] = kept
+			images[index] = kept
+			cutouts = cutouts.filter(func(c: Array) -> bool: return c[0] != image_texture)
+	if not replaced.is_empty():
+		state.set_images(images)
+		_use_replaced(state, replaced)
 	return cutouts
+
+
+## Lets go of the textures kept for sharing: a world shown next starts afresh.
+static func forget_shared() -> void:
+	_shared_lock.lock()
+	_shared.clear()
+	_shared_lock.unlock()
+
+
+static func _cap(image: Image) -> void:
+	while texture_cap > 0 and maxi(image.get_width(), image.get_height()) > texture_cap:
+		image.shrink_x2()
+
+
+## What identifies an image's texture: its bytes in the file and the cap it is made with; ""
+## for an image not stored in the file's own buffer, which is then not shared.
+static func _image_key(state: GLTFState, index: int) -> String:
+	var described: Array = state.json.get("images", [])
+	var views: Array = state.json.get("bufferViews", [])
+	var buffers: Array[PackedByteArray] = state.buffers
+	if index >= described.size() or not described[index] is Dictionary:
+		return ""
+	var entry: Dictionary = described[index]
+	var found: Variant = entry.get("bufferView")
+	if not (found is int or found is float):
+		return ""
+	var number: float = found
+	var view_index: int = int(number)
+	if view_index < 0 or view_index >= views.size() or not views[view_index] is Dictionary:
+		return ""
+	var view: Dictionary = views[view_index]
+	var buffer: int = view.get("buffer", 0)
+	if buffer < 0 or buffer >= buffers.size():
+		return ""
+	var start: int = view.get("byteOffset", 0)
+	var length: int = view.get("byteLength", 0)
+	var bytes: PackedByteArray = buffers[buffer].slice(start, start + length)
+	if bytes.size() != length or length == 0:
+		return ""
+	var hashing: HashingContext = HashingContext.new()
+	hashing.start(HashingContext.HASH_SHA256)
+	hashing.update(bytes)
+	return "%s@%d" % [hashing.finish().hex_encode(), texture_cap]
+
+
+static func _shared_texture(key: String) -> ImageTexture:
+	if key.is_empty():
+		return null
+	_shared_lock.lock()
+	var reference: WeakRef = _shared.get(key)
+	var texture: ImageTexture = reference.get_ref() if reference != null else null
+	if reference != null and texture == null:
+		_shared.erase(key)
+	_shared_lock.unlock()
+	return texture
+
+
+## Keeps `texture` for sharing under `key`; the one kept already if another worker was first.
+static func _share(key: String, texture: ImageTexture) -> ImageTexture:
+	if key.is_empty():
+		return texture
+	_shared_lock.lock()
+	var reference: WeakRef = _shared.get(key)
+	var kept: ImageTexture = reference.get_ref() if reference != null else null
+	if kept == null:
+		_shared[key] = weakref(texture)
+		kept = texture
+	_shared_lock.unlock()
+	return kept
+
+
+## Godot makes a file's materials while reading it: they are pointed at the shared textures.
+static func _use_replaced(state: GLTFState, replaced: Dictionary[Texture2D, Texture2D]) -> void:
+	for material: Material in state.get_materials():
+		var standard: BaseMaterial3D = material as BaseMaterial3D
+		if standard == null:
+			continue
+		for parameter: int in BaseMaterial3D.TEXTURE_MAX:
+			var texture: Texture2D = standard.get_texture(parameter)
+			if texture != null and replaced.has(texture):
+				standard.set_texture(parameter, replaced[texture])
 
 
 ## Roughness spreads a reflection rather than removing it. Dry porous surfaces may request
@@ -61,6 +175,9 @@ static func finish_cutouts(cutouts: Array[Array]) -> void:
 		var texture: ImageTexture = cutout[0]
 		var cutoff: float = cutout[1]
 		var image: Image = texture.get_image()
+		# Shared by another section, which finished it already.
+		if image.has_mipmaps():
+			continue
 		image.convert(Image.FORMAT_RGBA8)
 		var width: int = image.get_width()
 		var height: int = image.get_height()
