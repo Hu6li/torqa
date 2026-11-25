@@ -631,7 +631,9 @@ func _ready() -> void:
 	_ghost.ghostly = true
 	_ghost.hide()
 	add_child(_ghost)
-	_make_rain()
+	_rain.draw_pass_1 = RainStreaks.mesh()
+	# Free of the camera's turn, so the rain falls straight down.
+	_rain.top_level = true
 	apply_conditions("Midday", "Clear")
 
 
@@ -689,16 +691,7 @@ func _apply_rider() -> void:
 func _on_world_ready(_info: Dictionary) -> void:
 	if not _orqwa.check_world_memory():
 		return
-	var authored: Dictionary = _orqwa.authored_world()
-	if authored.is_empty():
-		if _authored.active():
-			_authored.stop()
-			_environment.sky.sky_material = _sky
-			apply_conditions(_time_of_day, _weather)
-	else:
-		_authored.start(_orqwa, authored)
-		var conditions: Dictionary = authored["environment"]
-		_authored.light(self, conditions)
+	_authored.follow(self, _orqwa)
 	apply_quality(_orqwa.graphics_quality(), _orqwa.graphics_options())
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())
@@ -911,26 +904,6 @@ func _fly(delta: float) -> void:
 ## 1 while `key` is held, else 0.
 static func _held(key: Key) -> float:
 	return 1.0 if Input.is_physical_key_pressed(key) else 0.0
-
-
-## Faceted raindrops (#103): slim four-sided diamonds in the pale sky colour; the emitter
-## stands free of the camera's turn so the rain falls straight down.
-func _make_rain() -> void:
-	# A streak a few millimetres thin: drops blur into lines as they fall past.
-	var drop: CylinderMesh = CylinderMesh.new()
-	drop.top_radius = 0.004
-	drop.bottom_radius = 0.004
-	drop.height = 0.6
-	drop.radial_segments = 4
-	drop.rings = 1
-	drop.cap_top = false
-	drop.cap_bottom = false
-	var material: ShaderMaterial = ShaderMaterial.new()
-	material.shader = preload("res://shaders/rain.gdshader")
-	material.set_shader_parameter("color", Palette.color("sky.rain"))
-	drop.material = material
-	_rain.draw_pass_1 = drop
-	_rain.top_level = true
 
 
 ## Fog lying in the low ground of the route (#103): thick on mornings, a trace at midday, and
