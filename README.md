@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/Godot-4-478CBF?logo=godotengine&logoColor=white" alt="Godot 4">
 </p>
 
+<p align="center">
+  <a href="https://buymeacoffee.com/boss.m8"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
+</p>
+
 ORQWA is a free, open-source indoor cycling app. Import a GPX route or a ride video and ride it
 on your smart trainer, through a 3D world or along the video, alone or with friends.
 
