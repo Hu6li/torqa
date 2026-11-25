@@ -1310,7 +1310,7 @@ the format and riding it; the realistic Lake Biel world is built in a private re
 - [x] The maintainers' roots made offline and built in (`RELEASE_ROOTS`) before a release
 - [ ] The shop page: paid worlds as downloads under their licence
 - [ ] Premium video courses in world files (R298): FFmpeg reading stored, seekable entries
-- [ ] Demo world (ADR 0043): the openly licensed, signed, unencrypted Twann – Chasseral world,
+- [ ] Demo world (ADR 0043): the free-to-share, signed, unencrypted Twann – Chasseral world,
   linked from the website and release pages for riders to download and import; no code in
   ORQWA. The usage guide says where to get it once it is published
 - [ ] Stage 2 (private repository): Twann – Chasseral from swisstopo data, the demo world above;
