@@ -316,7 +316,7 @@ func _lod_file(section: Dictionary, lod: int) -> String:
 
 
 func _ask(file: String) -> void:
-	if _asked.has(file) or _parsing.has(file) or _settling.has(file):
+	if _asked.has(file) or _waiting.has(file) or _parsing.has(file) or _settling.has(file):
 		return
 	_asked[file] = true
 	_orqwa.request_world_part(file)
