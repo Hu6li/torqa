@@ -95,9 +95,9 @@ for devices, courses, workouts and more.
 
 ## Support ORQWA
 
-ORQWA is free and built in spare time. If you enjoy it, you can
-[sponsor it on GitHub](https://github.com/sponsors/ORQWA) or buy me a coffee:
+ORQWA is free and built in spare time. If you enjoy it, you can support it here:
 
+<a href="https://github.com/sponsors/ORQWA"><img src="docs/images/sponsor-button.svg" alt="Sponsor on GitHub" height="40"></a>
 <a href="https://buymeacoffee.com/boss.m8"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
 
 ## Contributing
