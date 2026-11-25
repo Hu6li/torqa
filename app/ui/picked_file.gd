@@ -9,6 +9,8 @@ const COPIES: String = "user://picked"
 ## ORQWA's Android plugin (ADR 0024), there only on Android: it names picked files the address
 ## itself does not name.
 const ANDROID: StringName = &"OrqwaAndroid"
+## How much of a picked file is held at once while it is copied.
+const CHUNK: int = 8 * 1024 * 1024
 
 
 ## The filters for a file dialog that opens one of `filters`' files: none on Android. Its picker
@@ -40,17 +42,30 @@ static func refusal(picked: String, extensions: PackedStringArray) -> String:
 static func local_path(picked: String) -> String:
 	if not picked.begins_with("content://"):
 		return picked
-	var data: PackedByteArray = FileAccess.get_file_as_bytes(picked)
-	if data.is_empty():
+	var source: FileAccess = FileAccess.open(picked, FileAccess.READ)
+	if source == null or source.get_length() == 0:
 		return picked
 	DirAccess.make_dir_recursive_absolute(COPIES)
 	var copy: String = COPIES.path_join(name_of(picked))
 	var file: FileAccess = FileAccess.open(copy, FileAccess.WRITE)
 	if file == null:
 		return picked
-	file.store_buffer(data)
+	# In pieces: a world runs to gigabytes, and Android kills an app that holds one whole.
+	while source.get_position() < source.get_length():
+		file.store_buffer(source.get_buffer(CHUNK))
+		if source.get_error() != OK or file.get_error() != OK:
+			file.close()
+			DirAccess.remove_absolute(copy)
+			return picked
 	file.close()
 	return ProjectSettings.globalize_path(copy)
+
+
+## Removes `path` if [method local_path] copied it, once the core has its own copy: a world
+## would otherwise keep gigabytes of the rider's storage twice.
+static func forget(path: String) -> void:
+	if path.get_base_dir() == ProjectSettings.globalize_path(COPIES):
+		DirAccess.remove_absolute(path)
 
 
 ## Where the core should write a file the rider wants saved at `picked`; then [method save] it.

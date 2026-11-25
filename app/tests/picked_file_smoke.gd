@@ -40,9 +40,23 @@ func _run() -> void:
 	)
 	_check(not PickedFile.refusal("/rides/Ride", routes).is_empty(), "so is one without extension")
 	_check(not PickedFile.refusal(document, routes).is_empty(), "and an unnamed document")
+	_check_forget()
 	if not _failed:
 		print("PICKED FILE SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## A copy goes once the core has its own; the rider's own files never do.
+func _check_forget() -> void:
+	var copy: String = PickedFile.save_path("content://downloads/World.oqx")
+	var own: String = ProjectSettings.globalize_path("user://World.oqx")
+	for path: String in [copy, own]:
+		FileAccess.open(path, FileAccess.WRITE).close()
+	PickedFile.forget(copy)
+	PickedFile.forget(own)
+	_check(not FileAccess.file_exists(copy), "an imported copy is removed")
+	_check(FileAccess.file_exists(own), "a file outside ORQWA's copies is kept")
+	DirAccess.remove_absolute(own)
 
 
 func _check(condition: bool, what: String) -> void:
