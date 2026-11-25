@@ -139,8 +139,8 @@ ratios remain supported.
 
 ### Extensions
 
-A world can use features later ORQWA versions add (lights, sound, moving parts) without a new
-format, the way glTF does:
+A world can use features later ORQWA versions add (lights, sound, moving parts, video) without a
+new format, the way glTF does:
 
 ```json
 "extensions_used": ["ORQWA_ambient_sound"],
