@@ -6,6 +6,8 @@ extends ConfirmationDialog
 ## (ADR 0024); elsewhere it opens the release page. Shown only outside rides; the rider's rides
 ## and settings are kept.
 
+signal quit_requested
+
 ## ORQWA's Android plugin, there only on Android.
 const ANDROID: StringName = &"OrqwaAndroid"
 
@@ -113,7 +115,7 @@ func _on_downloaded() -> void:
 		return
 	# The installer replaces ORQWA's files only once it has closed.
 	if _orqwa.install_update():
-		get_tree().quit()
+		quit_requested.emit()
 		return
 	_downloading = false
 	_show_offer()

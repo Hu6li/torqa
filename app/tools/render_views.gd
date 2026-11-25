@@ -75,8 +75,11 @@ func _run() -> void:
 	var specs: Dictionary[String, Array] = VIEWS.duplicate()
 	var shot_options: Dictionary[String, Dictionary] = {}
 	var gpx: String = ProjectSettings.globalize_path("res://../core/fixtures/%s.gpx" % route)
-	if route.ends_with(".gpx") or route.ends_with(".oqc"):
+	if route.ends_with(".gpx") or route.ends_with(".oqc") or route.ends_with(".oqx"):
 		gpx = route
+		if route.ends_with(".oqx"):
+			# A world file's route (ADR 0042), by its id.
+			gpx = route + "#" + OS.get_environment("WORLD_ROUTE")
 		specs.clear()
 		for shot: String in OS.get_environment("SHOTS").split(" ", false):
 			var parts: PackedStringArray = shot.split(":")
@@ -117,7 +120,7 @@ func _run() -> void:
 	)
 	var failure: Array[String] = [""]
 	orqwa.failed.connect(func(message: String) -> void: failure[0] = message)
-	if route.ends_with(".oqc"):
+	if route.ends_with(".oqc") or route.ends_with(".oqx"):
 		orqwa.route_loaded.connect(
 			func(_info: Variant = null) -> void: orqwa.call_deferred("build_world", false, INF),
 			CONNECT_ONE_SHOT

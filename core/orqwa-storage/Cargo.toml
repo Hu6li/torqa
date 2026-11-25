@@ -7,8 +7,13 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Lets the fuzzer reach the parsers behind the signature check (ADR 0043); never in builds.
+fuzzing = []
+
 [dependencies]
 orqwa-domain.workspace = true
+orqwa-licence.workspace = true
 orqwa-world.workspace = true
 rusqlite.workspace = true
 rustyfit.workspace = true
@@ -18,6 +23,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 zip.workspace = true
+
+[dev-dependencies]
+orqwa-licence = { workspace = true, features = ["dev-keys"] }
 
 [lints]
 workspace = true

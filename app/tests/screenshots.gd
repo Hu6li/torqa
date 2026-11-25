@@ -334,8 +334,15 @@ func _initialize() -> void:
 		or OS.get_environment("SCREENSHOT_CONTINUATION_FILTER_ONLY") == "1"
 	):
 		_continuation_only.call_deferred()
+	elif OS.get_environment("SCREENSHOT_WORLDS_ONLY") == "1":
+		_worlds_only.call_deferred()
 	else:
 		_run.call_deferred()
+
+
+func _worlds_only() -> void:
+	await WorldLibraryScreenshots.capture(_main, OS.get_environment("SCREENSHOT_DIR"))
+	quit(0)
 
 
 func _calories_only() -> void:

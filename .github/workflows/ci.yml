@@ -205,6 +205,11 @@ jobs:
       - name: Build CLI
         run: |
           cargo build --manifest-path core/Cargo.toml -p orqwa-cli --release --locked
+          # A release opens no world sealed with the development keys (ADR 0043).
+          if core/target/release/orqwa-cli world-check core/fixtures/worlds/test-loop.oqx; then
+            echo "the release trusts the development keys" >&2
+            exit 1
+          fi
           mkdir -p dist
           # Artifacts drop the executable bit; a tarball keeps it.
           cp core/orqwa-cli/notices/VOICE-LICENSES.txt core/target/release/
@@ -458,6 +463,11 @@ jobs:
       - name: Build CLI
         run: |
           cargo build --manifest-path core/Cargo.toml -p orqwa-cli --release --locked
+          # A release opens no world sealed with the development keys (ADR 0043).
+          if core/target/release/orqwa-cli world-check core/fixtures/worlds/test-loop.oqx; then
+            echo "the release trusts the development keys" >&2
+            exit 1
+          fi
           mkdir -p dist
           # Artifacts drop the executable bit; a tarball keeps it.
           cp core/orqwa-cli/notices/VOICE-LICENSES.txt core/target/release/
@@ -610,6 +620,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: python3 scripts/release/version.py --tag "$GITHUB_REF_NAME"
+      # Worlds open only with the maintainers' roots built in.
+      - run: python3 scripts/release/licensing.py
 
   release:
     name: Publish tagged release

@@ -40,10 +40,17 @@ use orqwa_session::estimate;
 use orqwa_session::workout::{EffortTest, HeartRateHold, RampTest, Workout};
 use orqwa_world::{DetailCell, MapFeature};
 
+// A release build trusting the development root would open worlds anyone can sign (ADR 0043).
+const _: () = assert!(
+    !orqwa_licence::DEV_KEYS || cfg!(debug_assertions),
+    "dev-keys is for development builds only: release builds must not trust it"
+);
+
 #[cfg(target_os = "android")]
 mod android_audio;
 #[cfg(target_os = "android")]
 mod android_memory;
+mod authored;
 mod background;
 mod graphics;
 mod group;
@@ -66,6 +73,59 @@ impl OrqwaCore {
     #[func]
     fn microphone_permission(request: bool) -> GString {
         microphone_permission::access(request).into()
+    }
+
+    /// The mipmap chain of a world file's cut-out texture (RGBA8, `width` × `height`), each
+    /// level keeping the image's cover at `cutoff` (ADR 0042), as `Image.create_from_data`
+    /// takes it; empty if `rgba` is not that image.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn cutout_mipmaps(
+        rgba: PackedByteArray,
+        width: i64,
+        height: i64,
+        cutoff: f64,
+    ) -> PackedByteArray {
+        let (Ok(width), Ok(height)) = (usize::try_from(width), usize::try_from(height)) else {
+            return PackedByteArray::new();
+        };
+        let bytes = rgba.as_slice();
+        if width == 0 || height == 0 || bytes.len() != width * height * 4 {
+            return PackedByteArray::new();
+        }
+        #[allow(clippy::cast_possible_truncation)] // a share in 0–1
+        let cutoff = cutoff as f32;
+        PackedByteArray::from(
+            orqwa_app::authored::cutout::mipmaps(bytes, width, height, cutoff).as_slice(),
+        )
+    }
+
+    /// The copies an `instances` group places (`per_copy` floats each) sorted into an asset's
+    /// levels of detail by each one's horizontal distance from (`x`, `z`) in the section's frame,
+    /// one buffer per level of `until` (metres, the last may be `INF`) (ADR 0042); empty if
+    /// `buffer` is not whole copies.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn copies_by_distance(
+        buffer: PackedFloat32Array,
+        per_copy: i64,
+        x: f64,
+        z: f64,
+        until: PackedFloat32Array,
+    ) -> Array<PackedFloat32Array> {
+        let floats = buffer.as_slice();
+        let Ok(per_copy) = usize::try_from(per_copy) else {
+            return Array::new();
+        };
+        if per_copy < 12 || !floats.len().is_multiple_of(per_copy) {
+            return Array::new();
+        }
+        #[allow(clippy::cast_possible_truncation)] // metres within a world
+        let here = [x as f32, z as f32];
+        orqwa_app::authored::copies::by_distance(floats, per_copy, here, until.as_slice())
+            .iter()
+            .map(|level| PackedFloat32Array::from(level.as_slice()))
+            .collect()
     }
 
     /// Version of the ORQWA core.
@@ -91,7 +151,17 @@ impl OrqwaCore {
     /// The branch and commit together, as the log and bug reports name the build (R130).
     #[func]
     fn build() -> GString {
-        GString::from(&build_name(BRANCH, COMMIT))
+        let name = build_name(BRANCH, COMMIT);
+        // A build anyone can sign worlds for says so where the rider sees the version (ADR 0043).
+        if orqwa_licence::DEV_KEYS {
+            let joined = if name.is_empty() {
+                String::new()
+            } else {
+                format!("{name}, ")
+            };
+            return GString::from(&format!("{joined}development keys"));
+        }
+        GString::from(&name)
     }
 
     /// Where ORQWA's source code is.
@@ -3855,6 +3925,66 @@ impl OrqwaApp {
         }
     }
 
+    /// The world file the loaded route runs through (R282, ADR 0042), as `authored::description`
+    /// gives it; empty for a course ORQWA builds the world of.
+    #[func]
+    fn authored_world(&self) -> VarDictionary {
+        self.app
+            .as_ref()
+            .and_then(App::authored)
+            .map_or_else(VarDictionary::new, |world| {
+                authored::description(world.file.description())
+            })
+    }
+
+    /// Whether the loaded route is a world file's (R282): its light is the author's, so time of
+    /// day, weather and season are not offered (R284).
+    #[func]
+    fn is_authored_world(&self) -> bool {
+        self.app
+            .as_ref()
+            .is_some_and(|app| app.authored().is_some())
+    }
+
+    /// The credits the loaded world file requires (R282), shown during its rides instead of
+    /// the map's and terrain's; empty for a course.
+    #[func]
+    fn authored_attribution(&self) -> PackedStringArray {
+        self.app
+            .as_ref()
+            .and_then(App::authored)
+            .map(|world| {
+                world
+                    .file
+                    .description()
+                    .attribution
+                    .iter()
+                    .map(GString::from)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Reads part `name` of the loaded world file in the background, for `take_world_part`.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn request_world_part(&self, name: GString) {
+        if let Some(app) = self.app.as_ref() {
+            app.request_world_part(&name.to_string());
+        }
+    }
+
+    /// Part `name` of the loaded world file once read, as `authored::part` gives it; `null`
+    /// until then. Handed over once.
+    #[func]
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn take_world_part(&self, name: GString) -> Variant {
+        self.app
+            .as_ref()
+            .and_then(|app| app.take_world_part(&name.to_string()))
+            .map_or_else(Variant::nil, authored::part)
+    }
+
     /// The land beyond the corridor: `{ground, water}` as mesh arrays in route coordinates,
     /// `ground` with land-cover colours like the chunks' terrain, `water` its lakes. Call it
     /// once a world is ready: it also prepares the land under the chunks for `horizon_fill` and
@@ -3987,7 +4117,7 @@ impl OrqwaApp {
     /// metres by cell (`Vector2i`), and `dropped`, the loaded cells to let go of. The chunk's
     /// façades are read once, until [`let_go_of_building_details`](Self::let_go_of_building_details).
     #[func]
-    #[allow(clippy::needless_pass_by_value)] // Godot passes arrays by value.
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot.
     fn world_building_details(
         &self,
         index: i64,
@@ -4779,6 +4909,7 @@ fn route_dict(route: &orqwa_app::RouteSummary) -> VarDictionary {
     let source = match route.elevation_source {
         ElevationSource::Terrain => "terrain",
         ElevationSource::File => "file",
+        ElevationSource::World => "world",
     };
     vdict! {
         "name" => route.name.as_str(),
@@ -4851,6 +4982,8 @@ fn course_dict(course: &orqwa_app::CourseEntry, locale: &str) -> VarDictionary {
         // Tacx RLV courses are known only by distance and slope: no 3D world.
         "located" => course.manifest.video.as_ref().is_none_or(|v| v.located),
         "countries" => &countries,
+        // A world's route (R282): its world, licence and every route deleted with it.
+        "world" => &course.world.as_ref().map_or_else(VarDictionary::new, authored::info),
     }
 }
 

@@ -13,6 +13,8 @@ static func prepare(
 	var continuing: bool = options.get("continue_course", false)
 	var focus: Vector2 = orqwa.world_start_position(continuing)
 	world._streaming.prioritize(world, focus)
+	if world._authored.active():
+		return await _prepare_authored(world, orqwa, focus, progress, requested)
 	var revision: int = world._chunk_revision
 	var course: String = orqwa.loaded_course()
 	var quality: String = orqwa.graphics_quality()
@@ -44,6 +46,27 @@ static func prepare(
 			and world._building_detail_streaming.ready_at(detail_focus)
 		):
 			return true
+		await world.get_tree().process_frame
+	return false
+
+
+## A world file's world needs no building (R282): the sections around `focus` are loaded.
+static func _prepare_authored(
+	world: RideWorld, orqwa: OrqwaApp, focus: Vector2, progress: Callable, requested: Callable
+) -> bool:
+	var course: String = orqwa.loaded_course()
+	# The hidden world's frame loop still streams around its camera. After another ride that
+	# camera may be kilometres away, repeatedly evicting the entry this coroutine is loading.
+	var entry_camera: Vector3 = world._camera.global_position
+	entry_camera.x = focus.x
+	entry_camera.z = -focus.y
+	world._camera.global_position = entry_camera
+	while requested.call() and course == orqwa.loaded_course() and world._authored.active():
+		world._authored.update(Vector3(focus.x, 0.0, -focus.y), world.view_distance())
+		if world._authored.ready_around(focus):
+			progress.call(1, 1)
+			return true
+		progress.call(0, 1)
 		await world.get_tree().process_frame
 	return false
 

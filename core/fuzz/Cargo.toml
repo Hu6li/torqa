@@ -14,7 +14,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4.13"
 orqwa-net = { path = "../orqwa-net", features = ["fuzzing"] }
-orqwa-storage = { path = "../orqwa-storage" }
+orqwa-storage = { path = "../orqwa-storage", features = ["fuzzing"] }
 
 [workspace]
 members = ["."]
@@ -85,6 +85,13 @@ bench = false
 [[bin]]
 name = "course"
 path = "fuzz_targets/course.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "world"
+path = "fuzz_targets/world.rs"
 test = false
 doc = false
 bench = false

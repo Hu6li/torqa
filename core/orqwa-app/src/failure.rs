@@ -169,6 +169,10 @@ pub enum Kind {
     MemoryPressure,
     /// Could not read Android's current available memory.
     ReadMemory,
+    /// A world's routes keep the names their author gave them.
+    WorldName,
+    /// Routes of worlds cannot be ridden in group rides.
+    WorldGroup,
 }
 impl Kind {
     /// Unformatted English gettext key; translate before substituting arguments.
@@ -280,6 +284,8 @@ impl Kind {
             Self::ReadMemory => {
                 "Could not check Android's available memory. Reopen ORQWA and try again."
             }
+            Self::WorldName => "A world's routes keep the names their author gave them.",
+            Self::WorldGroup => "Routes of worlds cannot be ridden in group rides.",
             Self::MemoryPressure => {
                 "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
             }

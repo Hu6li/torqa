@@ -73,7 +73,7 @@ fn directory(file: &mut File) -> Result<usize, CourseError> {
     Ok(count)
 }
 
-fn safe(name: &str, directory: bool) -> bool {
+pub(crate) fn safe(name: &str, directory: bool) -> bool {
     let name = if directory {
         name.strip_suffix('/').unwrap_or(name)
     } else {

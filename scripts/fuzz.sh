@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Fuzzes the decoders that read untrusted group-ride input (ADR 0035): codes, lobby and
 # handover controls, voice and state datagrams, selections, workouts, previews, STUN and
-# shared courses.
+# shared courses, and world files riders import (ADR 0042).
 # Each target runs for the given number of seconds (default 30). Inside the dev container;
 # CI runs it on every change. A finding stops with its input under core/fuzz/artifacts/.
 set -eu
@@ -19,6 +19,8 @@ ORQWA_FUZZ_CORPUS="$corpus" cargo test --locked -q -p orqwa-net --features fuzzi
     fuzz::tests::write_fuzz_seeds -- --ignored --exact
 ORQWA_FUZZ_CORPUS="$corpus" cargo test --locked -q -p orqwa-storage --lib \
     course::shared::tests::write_fuzz_seed -- --ignored --exact
+ORQWA_FUZZ_CORPUS="$corpus" cargo test --locked -q -p orqwa-storage --lib \
+    world::tests::write_fuzz_seed -- --ignored --exact
 
 cd "$root/core/fuzz"
 for target in $(cargo fuzz list); do

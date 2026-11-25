@@ -5,6 +5,9 @@
 pub mod about;
 pub mod ambient;
 pub mod analysis;
+pub mod authored;
+#[cfg(test)]
+mod authored_tests;
 pub mod failure;
 pub mod graphics;
 pub mod group;
@@ -229,10 +232,12 @@ pub struct RouteSummary {
 /// A course in the library.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CourseEntry {
-    /// The course file.
+    /// The course file, or the route of a world file ([`authored::WorldRoute`]).
     pub path: PathBuf,
-    /// What the course file says about itself.
+    /// What the course file says about itself; for a world's route, what a course's would.
     pub manifest: Manifest,
+    /// For a world's route, what the library tells of its world (R282).
+    pub world: Option<authored::WorldInfo>,
 }
 
 /// A course as its estimated time depends on it: its file, and when and how long it was
@@ -741,6 +746,7 @@ const MAX_TIME_SCALE: f64 = 20.0;
 const NO_PICTURE_AFTER: Duration = Duration::from_secs(5);
 
 /// The application state.
+#[allow(clippy::struct_excessive_bools)] // independent switches, not one state spelled out
 pub struct App {
     runtime: tokio::runtime::Runtime,
     jobs_tx: mpsc::Sender<JobResult>,
@@ -853,7 +859,14 @@ pub struct App {
     group_radius: Meters,
     road_widths: orqwa_world::RoadWidths,
     driving_left: Vec<Option<bool>>,
+    /// The world file of the loaded route, if it is a world's (R282).
+    authored: Option<Arc<authored::Authored>>,
+    /// The world files in the library, read once per version.
+    worlds: authored::Library,
     offline: bool,
+    /// Whether opening a course whose file lacks its map's tiles fetches them online. Unit
+    /// tests never do: no server's speed may decide what they see.
+    online_course_maps: bool,
     /// Name and GPX of the loaded route, for saving it as a course.
     loaded: Option<(String, String)>,
     /// Cached files the loaded route and its world were built from.
@@ -909,6 +922,7 @@ impl App {
     ///
     /// # Errors
     /// [`AppError::Runtime`] if the async runtime cannot start.
+    #[allow(clippy::too_many_lines)] // one line for each part of the app's state
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Result<Self, AppError> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -968,7 +982,10 @@ impl App {
             chunks: None,
             road_widths: orqwa_world::RoadWidths::default(),
             driving_left: Vec::new(),
+            authored: None,
+            worlds: authored::Library::default(),
             offline: false,
+            online_course_maps: !cfg!(test),
             loaded: None,
             used: UsedFiles::default(),
             ride: None,
@@ -1190,10 +1207,16 @@ impl App {
         if self.group.is_some() {
             return;
         }
-        self.open_course_mode(path, false);
+        match authored::WorldRoute::parse(&path) {
+            Some(which) => self.open_world_route(path, which),
+            None => self.open_course_mode(path, false),
+        }
     }
     pub(crate) fn open_shared_course(&mut self, path: PathBuf) {
-        self.open_course_mode(path, true);
+        // Worlds are not shared (R285): a group's course is always a course file.
+        if authored::WorldRoute::parse(&path).is_none() {
+            self.open_course_mode(path, true);
+        }
     }
     fn open_course_mode(&mut self, path: PathBuf, shared: bool) {
         let used = self.start_loading(true);
@@ -1212,6 +1235,7 @@ impl App {
             orqwa_osm::detail::installed(&cache.join("osm"))
         };
         let in_library = !shared && path.starts_with(self.courses_dir());
+        let online_map = !shared && self.online_course_maps;
         self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
@@ -1288,7 +1312,7 @@ impl App {
                 if !outdated_preview {
                     map = course_map(&imported.route, (&cache, true), &used, &mut report).await;
                 }
-                if map.is_none() && !shared {
+                if map.is_none() && online_map {
                     map = course_map(&imported.route, (&cache, false), &used, &mut report).await;
                 }
                 imported.course_map = map;
@@ -1300,6 +1324,42 @@ impl App {
                 (Ok(imported), None) => JobResult::Route(load, Ok(Box::new(imported))),
                 (Err(message), _) => JobResult::Route(load, Err(message)),
             });
+        });
+    }
+
+    /// Opens a world's route (R282): read as authored, with nothing to fetch, match or build.
+    /// Reports [`AppEvent::RouteLoaded`] like [`App::open_course`]; its world is "built" at
+    /// once by [`App::build_world`], as the scene reads it from the file itself.
+    fn open_world_route(&mut self, path: PathBuf, which: authored::WorldRoute) {
+        let _ = self.start_loading(true);
+        let load = self.load;
+        self.naming = None;
+        self.from_course = true;
+        self.world_plan = WorldPlan::OnRequest(None);
+        self.course = Some(path.clone());
+        let tx = self.jobs_tx.clone();
+        self.spawn_load(load, async move {
+            let opened = tokio::task::spawn_blocking(move || authored::open(&which))
+                .await
+                .map_err(|e| Failure::new(Kind::PreparationStopped, e))
+                .and_then(|r| r.map_err(|e| Failure::new(Kind::OpenFile, e).arg(path.display())));
+            let _ = tx.send(JobResult::Route(
+                load,
+                opened.map(|(route, driving_left, world, name)| {
+                    let minimap = orqwa_world::minimap(&route, &orqwa_osm::MapData::default());
+                    Box::new(Imported {
+                        route,
+                        map: orqwa_osm::MapData::default(),
+                        name,
+                        gpx: String::new(),
+                        course_map: None,
+                        minimap,
+                        countries: Some(Vec::new()),
+                        driving_left,
+                        authored: Some(Arc::new(world)),
+                    })
+                }),
+            ));
         });
     }
 
@@ -1650,7 +1710,8 @@ impl App {
         let (Some(route), Some((name, gpx))) = (&self.route, &self.loaded) else {
             return Err(AppError::CourseNotReady);
         };
-        if self.world.is_none() && self.video.is_none() {
+        if (self.world.is_none() && self.video.is_none()) || self.authored.is_some() {
+            // A world's route is in the library already, as its world (R282).
             return Err(AppError::CourseNotReady);
         }
         let naming = self.naming.take();
@@ -1780,6 +1841,12 @@ impl App {
     /// # Errors
     /// [`AppError::Reported`] if the name is blank or the file cannot be rewritten.
     pub fn rename_course(&mut self, path: &Path, name: &str) -> Result<(), AppError> {
+        if authored::WorldRoute::parse(path).is_some() {
+            return Err(AppError::Reported(Failure::new(
+                Kind::WorldName,
+                "a world's routes keep their author's names",
+            )));
+        }
         let name = name.trim();
         if name.is_empty() {
             return Err(AppError::Reported(Failure::new(
@@ -1801,6 +1868,30 @@ impl App {
     /// # Errors
     /// [`AppError::Reported`] if the file cannot be deleted.
     pub fn delete_course(&mut self, path: &Path) -> Result<(), AppError> {
+        // A world's route goes with its world, all its routes (R282): the course page names them.
+        if let Some(which) = authored::WorldRoute::parse(path) {
+            if self
+                .authored
+                .as_ref()
+                .is_some_and(|world| world.file.path() == which.file)
+            {
+                // Its file is let go of first: Windows deletes no open file.
+                self.leave_world();
+                self.authored = None;
+            }
+            std::fs::remove_file(&which.file).map_err(|e| {
+                AppError::Reported(Failure::new(Kind::DeleteFile, e).arg(which.file.display()))
+            })?;
+            if self
+                .course
+                .as_deref()
+                .and_then(authored::WorldRoute::parse)
+                .is_some_and(|loaded| loaded.file == which.file)
+            {
+                self.course = None;
+            }
+            return Ok(());
+        }
         // The course's own copy of its video, beside it, goes with it unless another course
         // rides along the same file (#165); a video elsewhere is the rider's and stays.
         let video = course::read_manifest(path)
@@ -1864,8 +1955,33 @@ impl App {
             .and_then(|n| self.course_named(&n.name))
     }
 
-    /// Copies a course file into the library; reports [`AppEvent::CourseAdded`].
+    /// Copies a course file into the library; reports [`AppEvent::CourseAdded`]. A world file
+    /// (R282) is checked whole first and goes into [`App::worlds_dir`]; the course added is its
+    /// first route.
     pub fn import_course(&mut self, path: PathBuf) {
+        if path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case(orqwa_storage::world::EXTENSION))
+        {
+            self.naming = None;
+            let worlds = self.worlds_dir();
+            let tx = self.jobs_tx.clone();
+            self.runtime.spawn_blocking(move || {
+                let result = authored::import(&path, &worlds)
+                    .and_then(|file| {
+                        let description =
+                            orqwa_storage::world::read_description(&file, &authored::trust())
+                                .map_err(|e| e.to_string())?;
+                        let first = description.routes.first().map(|r| r.id.clone());
+                        Ok(first.map_or(file.clone(), |route| {
+                            authored::WorldRoute { file, route }.path()
+                        }))
+                    })
+                    .map_err(|e| Failure::new(Kind::ImportFile, e).arg(path.display()));
+                let _ = tx.send(JobResult::CourseAdded(result));
+            });
+            return;
+        }
         let library = self.courses_dir();
         let tx = self.jobs_tx.clone();
         let naming = self.naming.take();
@@ -1896,23 +2012,57 @@ impl App {
     /// The courses in the library, by name. Unreadable files are skipped.
     #[must_use]
     pub fn courses(&self) -> Vec<CourseEntry> {
-        let Ok(entries) = std::fs::read_dir(self.courses_dir()) else {
-            return Vec::new();
-        };
-        let mut courses: Vec<CourseEntry> = entries
+        let mut courses: Vec<CourseEntry> = std::fs::read_dir(self.courses_dir())
+            .into_iter()
+            .flatten()
             .filter_map(Result::ok)
             .map(|entry| entry.path())
             .filter(|path| path.extension().is_some_and(|e| e == course::EXTENSION))
             .filter_map(|path| match course::read_manifest(&path) {
-                Ok(manifest) => Some(CourseEntry { path, manifest }),
+                Ok(manifest) => Some(CourseEntry {
+                    path,
+                    manifest,
+                    world: None,
+                }),
                 Err(error) => {
                     warn!(path = %path.display(), %error, "skipping course");
                     None
                 }
             })
             .collect();
+        courses.extend(self.worlds.entries(&self.worlds_dir()));
         courses.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
         courses
+    }
+
+    /// The world file the loaded route runs through, if it is a world's route (R282).
+    #[must_use]
+    pub fn authored(&self) -> Option<&authored::Authored> {
+        self.authored.as_deref()
+    }
+
+    /// Reads the part `name` of the loaded world file in the background, for
+    /// [`App::take_world_part`]. Does nothing for a part being read already.
+    pub fn request_world_part(&self, name: &str) {
+        let Some(world) = self.authored.clone() else {
+            return;
+        };
+        if world.ask(name) {
+            let name = name.to_owned();
+            self.runtime.spawn_blocking(move || world.read(&name));
+        }
+    }
+
+    /// The part `name` of the loaded world file once read; `None` until then.
+    #[must_use]
+    pub fn take_world_part(&self, name: &str) -> Option<Result<authored::Part, String>> {
+        self.authored.as_ref()?.take(name)
+    }
+
+    /// The library's folder of world files (R282): beside the courses, apart from them.
+    #[must_use]
+    pub fn worlds_dir(&self) -> PathBuf {
+        self.data_dir.join("worlds")
     }
 
     /// The course library as the Courses tab shows it (R67): what `query` searches, chooses,
@@ -2071,14 +2221,18 @@ impl App {
     /// was prepared; `None` without one.
     #[must_use]
     pub fn course_preview(path: &Path) -> Option<Vec<u8>> {
-        course::preview(path)
+        match authored::WorldRoute::parse(path) {
+            // A world's picture is its author's (R282).
+            Some(which) => authored::preview(&which.file),
+            None => course::preview(path),
+        }
     }
 
     /// Whether the course at `path` is to get a new map picture: it has none, or one of its
     /// route's corridor only, from before #203.
     #[must_use]
     pub fn course_preview_outdated(path: &Path) -> bool {
-        course::preview_outdated(path)
+        authored::WorldRoute::parse(path).is_none() && course::preview_outdated(path)
     }
 
     /// The map to draw the picture of the course at `path` from (#203), if it is the loaded
@@ -2128,6 +2282,9 @@ impl App {
                 .and_then(|xml| orqwa_video::incyclist::parse(&xml).ok())
                 .map(|route| route.title),
             "oqc" => course::read_manifest(path).ok().map(|m| m.name),
+            "oqx" => orqwa_storage::world::read_description(path, &authored::trust())
+                .ok()
+                .map(|d| d.name),
             "rlv" => video::tacx_course_name(path),
             _ => None,
         };
@@ -2247,6 +2404,7 @@ impl App {
         }
         self.road_widths = orqwa_world::RoadWidths::default();
         self.driving_left.clear();
+        self.authored = None;
         self.route = None;
         self.course_map = None;
         self.minimap = orqwa_world::FlatMap::default();
@@ -2278,7 +2436,16 @@ impl App {
         });
         self.world_generator = generator;
         self.keep_as = keep_as;
-        self.road_widths = orqwa_world::RoadWidths::new(&world.road);
+        self.road_widths = match (&self.authored, &self.route) {
+            (Some(authored), Some(route)) => authored::road_widths(route, &authored.widths),
+            _ => orqwa_world::RoadWidths::new(&world.road),
+        };
+        if self.authored.is_some() {
+            events.push(AppEvent::WorldGrew {
+                structures: false,
+                complete: true,
+            });
+        }
         self.chunks_reported = chunks.finished_count();
         // The scene draws the world's structures whole now.
         self.added_structures.clear();
@@ -2439,6 +2606,19 @@ impl App {
     /// Generates the 3D world for `route` in the background; reports [`AppEvent::WorldReady`].
     #[allow(clippy::too_many_lines)] // one load-scoped task: early hand-over, completion and errors
     fn generate_world(&mut self, route: Route, map: orqwa_osm::MapData) {
+        if self.authored.is_some() {
+            // A world file is its world (R282): nothing is built, the scene reads the file.
+            let loaded = LoadedWorld {
+                world: Arc::new(orqwa_world::World::default()),
+                chunks: Arc::new(WorldChunks::none()),
+                generator: orqwa_world::GENERATOR,
+                keep_as: None,
+            };
+            let _ = self
+                .jobs_tx
+                .send(JobResult::World(self.world_load, Box::new(loaded)));
+            return;
+        }
         if self.take_over_background() {
             return;
         }
@@ -3683,7 +3863,22 @@ impl App {
         }
         let path = profiles::rides_dir(&self.data_dir, &self.profile.id)
             .join(paths::activity_file_name(start));
-        let samples = active.ride.samples();
+        let unplaced: Vec<orqwa_domain::recording::Sample>;
+        let samples = if self.authored.as_ref().is_some_and(|world| !world.located()) {
+            // A world not placed on Earth has no positions to give (R283): an indoor ride.
+            unplaced = active
+                .ride
+                .samples()
+                .iter()
+                .map(|sample| orqwa_domain::recording::Sample {
+                    location: None,
+                    ..*sample
+                })
+                .collect();
+            &unplaced
+        } else {
+            active.ride.samples()
+        };
         let saved = orqwa_storage::encode_fit(start, samples)
             .map_err(|e| Failure::new(Kind::SaveFile, e).arg(path.display()))
             .and_then(|fit| {
@@ -4691,7 +4886,9 @@ impl App {
             minimap,
             countries,
             driving_left,
+            authored,
         } = imported;
+        self.authored = authored;
         self.map_detail = map.detail.extracts().to_vec();
         self.loaded = Some((name.clone(), gpx));
         self.course_map = course_map;

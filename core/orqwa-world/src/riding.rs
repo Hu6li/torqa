@@ -23,6 +23,9 @@ type Found = (f64, (f64, f64));
 pub struct RoadWidths {
     spans: Vec<Span>,
     cells: HashMap<(i64, i64), Vec<usize>>,
+    /// Authored roads already use the route's own middle; a coarse width index must not
+    /// pull its smooth curve back onto straight sample chords.
+    follows_route: bool,
 }
 
 impl RoadWidths {
@@ -51,20 +54,45 @@ impl RoadWidths {
             }
             let (a, width_a) = section(triangle[0]);
             let (b, width_b) = section(triangle[1]);
-            let index = result.spans.len();
-            result.spans.push(Span {
+            result.add(Span {
                 a,
                 b,
                 widths: [width_a, width_b],
             });
-            let (from, to) = (cell(a[0], -a[2]), cell(b[0], -b[2]));
-            for x in from.0.min(to.0)..=from.0.max(to.0) {
-                for y in from.1.min(to.1)..=from.1.max(to.1) {
-                    result.cells.entry((x, y)).or_default().push(index);
-                }
-            }
         }
         result
+    }
+
+    /// A road known by the line down its middle and its width along it, such as a world
+    /// file's route (ADR 0042): points in the scene's axes (east, elevation, −north), each
+    /// with the road's width there. Its middle follows the route's continuous position;
+    /// these straight spans index width only, without a fitted map-road correction.
+    #[must_use]
+    pub fn along(points: &[([f64; 3], f64)]) -> Self {
+        let mut result = Self {
+            follows_route: true,
+            ..Self::default()
+        };
+        for pair in points.windows(2) {
+            let ((a, width_a), (b, width_b)) = (pair[0], pair[1]);
+            result.add(Span {
+                a,
+                b,
+                widths: [width_a, width_b],
+            });
+        }
+        result
+    }
+
+    fn add(&mut self, span: Span) {
+        let index = self.spans.len();
+        let (from, to) = (cell(span.a[0], -span.a[2]), cell(span.b[0], -span.b[2]));
+        self.spans.push(span);
+        for x in from.0.min(to.0)..=from.0.max(to.0) {
+            for y in from.1.min(to.1)..=from.1.max(to.1) {
+                self.cells.entry((x, y)).or_default().push(index);
+            }
+        }
     }
 
     /// Carriageway width at metres east/north and the route's elevation. Height distinguishes
@@ -81,9 +109,12 @@ impl RoadWidths {
     /// The middle of the carriageway nearest the route at metres east/north and the route's
     /// elevation, in metres east/north: the road is laid off the map's line where the
     /// buildings beside it show the street lies (`RoadIndex::fit_between`). The route's own
-    /// point without a drawn road.
+    /// point without a drawn road, or with an authored road already following that route.
     #[must_use]
     pub fn middle(&self, east: f64, north: f64, elevation: Meters) -> (f64, f64) {
+        if self.follows_route {
+            return (east, north);
+        }
         // Further off, the nearest carriageway is another stretch of the road (a hairpin's).
         self.nearest(east, north, elevation)
             .map(|(_, middle)| middle)

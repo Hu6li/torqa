@@ -1,0 +1,23 @@
+[package]
+name = "orqwa-licence"
+description = "Signed, encrypted and activated world files for ORQWA (ADR 0043)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Trusts the development root, whose private key is in this source: tests and worlds being
+# built. orqwa-gd and orqwa-cli refuse to compile a release build with it (ADR 0043).
+dev-keys = []
+
+[dependencies]
+aws-lc-rs.workspace = true
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,267 @@
+extends SceneTree
+## World files (R282–R285, ADR 0042) in the app: imported, listed by route, opened without
+## building, their sections, placed assets, far landscape and own light in the scene, with the
+## author's materials (mipmapped textures, ORQWA's terrain layers on the ground, cut-out leaves
+## keeping their cover in smaller mipmaps), and the rider's time, weather and season neither
+## offered nor applied. Uses the test world of art/worlds/test_world.py.
+## Run: godot --headless --path app -s res://tests/world_file_smoke.gd
+
+const FIXTURE: String = "../core/fixtures/worlds/test-loop.oqx"
+const TERRAIN_SHADER: String = "res://shaders/authored_terrain.gdshader"
+const DIFFUSE_TERRAIN_SHADER: String = "res://shaders/authored_terrain_diffuse.gdshader"
+
+var _failed: bool = false
+var _main: Control
+var _orqwa: OrqwaApp
+var _world: RideWorld
+var _added: String = ""
+
+
+func _initialize() -> void:
+	_run.call_deferred()
+
+
+func _run() -> void:
+	_main = (load("res://scenes/main.tscn") as PackedScene).instantiate() as Control
+	root.add_child(_main)
+	await process_frame
+	_orqwa = _main.get_node("Orqwa")
+	_world = _main.get_node("World")
+	_orqwa.set_graphics_quality("low")
+	_orqwa.course_added.connect(func(path: String) -> void: _added = path)
+	_cutouts()
+	_diffuse_materials()
+	_section_backdrops()
+	var course: Dictionary = await _imported()
+	if not course.is_empty():
+		await _opened(course)
+		_light()
+		_options()
+		_page(course)
+	_world._authored.stop()
+	_main.queue_free()
+	await process_frame
+	await process_frame
+	if not _failed:
+		print("WORLD FILE SMOKE TEST PASSED")
+	quit(1 if _failed else 0)
+
+
+func _imported() -> Dictionary:
+	var fixture: String = ProjectSettings.globalize_path("res://").path_join(FIXTURE)
+	_orqwa.import_course(fixture.simplify_path())
+	await _wait_until(func() -> bool: return not _added.is_empty(), "the world is imported")
+	for course: Dictionary in _orqwa.courses():
+		var world: Dictionary = course.get("world", {})
+		if not world.is_empty():
+			var path: String = course["path"]
+			var licence: String = world["licence"]
+			var length: float = course["length_m"]
+			_check(path == _added, "the course added is the world's route")
+			_check(licence == "CC0-1.0", "the library knows the world's licence")
+			_check(length > 590.0, "the route's length comes from the world")
+			var countries: Array = course["countries"]
+			_check(countries.size() == 1, "the author supplies one country")
+			if countries.size() == 1:
+				var code: String = countries[0]["code"]
+				_check(code == "CH", "the author supplies the country code")
+			return course
+	_check(false, "the library lists the world's route")
+	return {}
+
+
+func _opened(course: Dictionary) -> void:
+	var path: String = course["path"]
+	_orqwa.open_course(path)
+	await _wait_until(_orqwa.has_route, "the route opens")
+	_check(_orqwa.is_authored_world(), "the loaded route is a world's")
+	_orqwa.build_world(false, INF)
+	await _wait_until(_world._authored.active, "the world's scene starts")
+	_check(_orqwa.world_chunk_count() == 0, "nothing is built for a world file")
+	await _wait_until(_world.surroundings_ready, "the start's sections are in the scene")
+	await _wait_until(
+		func() -> bool: return _world._authored.get_node_or_null("Horizon") != null,
+		"the far landscape is in the scene"
+	)
+	await _wait_until(_trees_placed, "the trees are placed with their mesh")
+	var terrain: bool = false
+	var mipmapped: bool = false
+	# The fixture's images are the world's shared textures: none stays the stand-in pixel.
+	var stand_in: bool = false
+	for node: Node in _world._authored.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (node as MeshInstance3D).mesh
+		for surface: int in mesh.get_surface_count():
+			var material: Material = mesh.surface_get_material(surface)
+			if material is ShaderMaterial:
+				terrain = (
+					terrain
+					or (
+						(material as ShaderMaterial).shader.resource_path
+						in [TERRAIN_SHADER, DIFFUSE_TERRAIN_SHADER]
+					)
+				)
+			elif material is StandardMaterial3D:
+				var albedo: Texture2D = (material as StandardMaterial3D).albedo_texture
+				if albedo != null and albedo.get_image().has_mipmaps():
+					mipmapped = true
+				if albedo != null and albedo.get_width() == 1:
+					stand_in = true
+	_check(terrain, "the ground carries ORQWA's terrain layers")
+	_check(not stand_in, "every texture is the world's own image, read from its textures")
+	_check(mipmapped, "the author's textures have mipmaps")
+
+
+func _trees_placed() -> bool:
+	for node: Node in _world._authored.find_children("*", "MultiMeshInstance3D", true, false):
+		var multimesh: MultiMesh = (node as MultiMeshInstance3D).multimesh
+		if multimesh.instance_count > 0 and multimesh.mesh != null:
+			return true
+	return false
+
+
+## The world's own sun stays, whatever the rider's time of day and weather (R284).
+func _light() -> void:
+	var sun: DirectionalLight3D = _world.get_node("Sun")
+	_check(is_equal_approx(sun.light_energy, 1.5), "the world's sun shines")
+	_world.apply_conditions("Evening", "Rain")
+	_check(is_equal_approx(sun.light_energy, 1.5), "the rider's time and weather leave it")
+	var rain: GPUParticles3D = _world.get_node("Camera/Rain")
+	_check(not rain.emitting, "no rain in a world file's world")
+
+
+func _options() -> void:
+	var options: RideOptions = RideOptions.new()
+	options.bind(_orqwa)
+	root.add_child(options)
+	options.show_option_groups(true, false)
+	var shown: Array[String] = []
+	for child: Node in options.get_children():
+		if child is Label and (child as Label).visible:
+			shown.append((child as Label).text)
+	_check("Camera" in shown, "the camera is offered")
+	_check(not "Weather" in shown and not "Season" in shown, "no weather or season for a world")
+	options.free()
+
+
+func _page(course: Dictionary) -> void:
+	var page: CourseDetail = CourseDetail.new()
+	page.bind(_orqwa)
+	root.add_child(page)
+	page.call("_show_world", course["world"])
+	var title: EditableTitle = page.get("_title")
+	var pencil: Button = title.get("_button")
+	_check(not pencil.visible, "a world's route cannot be renamed")
+	var dialog: ConfirmationDialog = page.get("_confirm_delete")
+	_check("Test loop" in dialog.dialog_text, "deleting names the world's routes")
+	page.free()
+
+
+## Scattered leaves, a third of the texels: averaged plainly, a few levels down none would reach
+## the cutoff and a crown would show its trunk only.
+func _cutouts() -> void:
+	var size: int = 64
+	var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 7
+	for y: int in size:
+		for x: int in size:
+			image.set_pixel(x, y, Color(0.2, 0.4, 0.1, 1.0 if rng.randi() % 3 == 0 else 0.0))
+	var texture: ImageTexture = ImageTexture.create_from_image(image)
+	var cutouts: Array[Array] = [[texture, 0.5]]
+	AuthoredMaterials.finish_cutouts(cutouts)
+	var made: Image = texture.get_image()
+	_check(made.has_mipmaps(), "cut-out textures get mipmaps")
+	var level: Image = Image.create_from_data(
+		8,
+		8,
+		false,
+		Image.FORMAT_RGBA8,
+		made.get_data().slice(made.get_mipmap_offset(3), made.get_mipmap_offset(4))
+	)
+	var covered: int = 0
+	for y: int in 8:
+		for x: int in 8:
+			covered += 1 if level.get_pixel(x, y).a >= 0.5 else 0
+	_check(covered >= 64 / 4, "cut-out leaves keep their cover at 8 × 8 (%d of 64)" % covered)
+
+
+func _diffuse_materials() -> void:
+	var dry: StandardMaterial3D = StandardMaterial3D.new()
+	dry.albedo_color = Color(0.12, 0.14, 0.08)
+	dry.roughness = 0.98
+	var glass: StandardMaterial3D = StandardMaterial3D.new()
+	glass.roughness = 0.08
+	var metal: StandardMaterial3D = StandardMaterial3D.new()
+	metal.metallic = 1.0
+	var materials: Array[Material] = [dry, glass, metal]
+	var state: GLTFState = GLTFState.new()
+	state.set_materials(materials)
+	state.json = {
+		"materials": [{"extras": {"ORQWA_diffuse": true}}, {}, {"extras": {"ORQWA_diffuse": true}}]
+	}
+	AuthoredMaterials.prepare(state)
+	_check(
+		dry.specular_mode == BaseMaterial3D.SPECULAR_DISABLED, "diffuse surfaces have no sky sheen"
+	)
+	_check(
+		dry.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,
+		"diffuse surfaces keep lighting and shadows"
+	)
+	_check(is_equal_approx(dry.roughness, 0.98), "diffuse surfaces keep authored roughness")
+	_check(glass.specular_mode != BaseMaterial3D.SPECULAR_DISABLED, "glass keeps its reflection")
+	_check(metal.specular_mode != BaseMaterial3D.SPECULAR_DISABLED, "metal keeps its reflection")
+	var terrain: ShaderMaterial = AuthoredMaterials._terrain(state, {}, dry)
+	_check(
+		terrain.shader.resource_path == DIFFUSE_TERRAIN_SHADER,
+		"terrain layers preserve diffuse response"
+	)
+	var colour: Color = terrain.get_shader_parameter("base_color")
+	_check(colour == dry.albedo_color, "diffuse terrain keeps the authored colour")
+
+
+func _section_backdrops() -> void:
+	var document: GLTFDocument = GLTFDocument.new()
+	var state: GLTFState = GLTFState.new()
+	var source: Dictionary = {
+		"asset": {"version": "2.0"},
+		"scene": 0,
+		"scenes": [{"nodes": [0, 1]}],
+		"nodes": [{"name": "ground", "extras": {"ORQWA_section": 0}}, {"name": "outer"}]
+	}
+	_check(
+		document.append_from_buffer(JSON.stringify(source).to_utf8_buffer(), "", state) == OK,
+		"background metadata fixture imports"
+	)
+	var scene: Node3D = document.generate_scene(state) as Node3D
+	AuthoredWorld._tag_backdrops(state)
+	var ground: Node3D = state.get_scene_node(0) as Node3D
+	var outer: Node3D = state.get_scene_node(1) as Node3D
+	var world: AuthoredWorld = AuthoredWorld.new()
+	world._sections.append({})
+	world._register_backdrops(scene)
+	_check(ground.visible, "coarse background covers unloaded sections")
+	world._shown[0] = 0
+	world._background_visible(0, false)
+	_check(not ground.visible and outer.visible, "detailed section replaces only its background")
+	world._let_go(0)
+	_check(ground.visible, "unloading a section restores its ground without a hole")
+	world._shown[0] = 1
+	world._backgrounds.clear()
+	world._register_backdrops(scene)
+	_check(not ground.visible, "a horizon loaded later respects already shown sections")
+	world.free()
+	scene.free()
+
+
+func _wait_until(done: Callable, what: String) -> void:
+	for _frame: int in 1200:
+		if done.call():
+			return
+		await process_frame
+	_check(false, what)
+
+
+func _check(condition: bool, what: String) -> void:
+	if not condition:
+		_failed = true
+		push_error("FAILED: " + what)

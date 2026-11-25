@@ -9,6 +9,7 @@ mod recorded_ride;
 mod ride_together;
 mod sample_rides;
 mod voice;
+mod worlds;
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -27,6 +28,12 @@ use orqwa_session::{Ride, RideConfig};
 use tracing_subscriber::EnvFilter;
 
 use devices::DeviceArgs;
+
+// A release build trusting the development root would open worlds anyone can sign (ADR 0043).
+const _: () = assert!(
+    !orqwa_licence::DEV_KEYS || cfg!(debug_assertions),
+    "dev-keys is for development builds only: release builds must not trust it"
+);
 
 #[derive(Parser)]
 #[command(
@@ -91,6 +98,49 @@ enum Command {
         /// The regions' downloads.
         #[arg(required = true)]
         pbf: Vec<PathBuf>,
+    },
+    /// Check a world file (`.oqx`, ADR 0042) against the format, as importing it does, and show
+    /// what it holds.
+    WorldCheck {
+        /// The world file.
+        file: PathBuf,
+        /// Also trust this root (`*.pub.json`), for roots not yet built into ORQWA.
+        #[arg(long)]
+        trust: Option<PathBuf>,
+    },
+    // The maintainers' tools for world files (ADR 0043) work in every build but stay out of
+    // the help: riders have no use for them.
+    /// Seal a folder holding a world's `world.json` and the parts it names into a signed world
+    /// file, and check it.
+    #[command(hide = true)]
+    WorldSeal(worlds::SealArgs),
+    /// Make a key (a root or a world key), encrypted with
+    /// `ORQWA_KEY_PASSWORD`; its public half goes beside it as `*.pub.json`.
+    #[command(hide = true)]
+    KeyNew {
+        /// Where to write the key.
+        out: PathBuf,
+    },
+    /// Let a root certify a world key.
+    #[command(hide = true)]
+    KeyCertify {
+        /// The root's key.
+        #[arg(long)]
+        root: PathBuf,
+        /// The public key to certify (`*.pub.json`).
+        #[arg(long)]
+        key: PathBuf,
+        /// A name for people, such as "world key 2026-11".
+        #[arg(long)]
+        name: String,
+        /// Where to write the certificate.
+        out: PathBuf,
+    },
+    /// Store the images several of a world folder's glTF files embed once, under `textures/`,
+    /// for those files to name: run on the folder before sealing it.
+    WorldShare {
+        /// The folder holding the world's `world.json`.
+        folder: PathBuf,
     },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
@@ -251,6 +301,16 @@ async fn main() -> Result<()> {
         Command::Detail { pbf, out, region } => detail(pbf, out, region).await,
         Command::BuildingCensus { pbf } => building_census(pbf).await,
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
+        Command::WorldCheck { file, trust } => worlds::check(&file, trust.as_deref()),
+        Command::WorldSeal(args) => worlds::seal(&args),
+        Command::WorldShare { folder } => worlds::share(&folder),
+        Command::KeyNew { out } => worlds::key_new(&out),
+        Command::KeyCertify {
+            root,
+            key,
+            name,
+            out,
+        } => worlds::key_certify(&root, &key, &name, &out),
         Command::SampleRides(args) => sample_rides::write(&args),
     }
 }
@@ -681,6 +741,7 @@ fn print_route(route: &Route) {
     let source = match route.elevation_source() {
         ElevationSource::Terrain => "terrain model (Mapterhorn / AWS Terrain Tiles)",
         ElevationSource::File => "GPX file",
+        ElevationSource::World => "the world file's route",
     };
     println!(
         "{}: {:.2} km, {:.0} m climbing, steepest {:.1} %, elevation from {source}",

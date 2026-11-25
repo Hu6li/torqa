@@ -287,6 +287,10 @@ msgstr ""
 msgid "A short chime as a card tells of a climb topped, a milestone or a record."
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "A world's routes keep the names their author gave them."
+msgstr ""
+
 #: core/orqwa-upload/src/intervals.rs
 msgid "API key"
 msgstr ""
@@ -651,6 +655,10 @@ msgstr ""
 msgid "Building the world · %d %%"
 msgstr ""
 
+#: app/scenes/course_detail.gd
+msgid "By %s"
+msgstr ""
+
 #: app/scenes/profile_tab.gd
 msgid "By gradient"
 msgstr ""
@@ -761,6 +769,10 @@ msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Check for updates"
+msgstr ""
+
+#: app/scenes/courses_tab.gd
+msgid "Checking %s …"
 msgstr ""
 
 #: app/scenes/account_dialog.gd
@@ -1001,6 +1013,10 @@ msgstr ""
 
 #: app/ui/about_page.gd
 msgid "Copy the version, e.g. for a bug report"
+msgstr ""
+
+#: app/scenes/courses_tab.gd
+msgid "Copying %s …"
 msgstr ""
 
 #: core/orqwa-app/src/import.rs
@@ -1313,6 +1329,10 @@ msgstr ""
 
 #: app/ui/course_settings.gd
 msgid "Delete world"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Deleting it deletes the world %s with all its routes: %s. Your rides on them are kept."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -2207,6 +2227,10 @@ msgstr ""
 msgid "Level"
 msgstr ""
 
+#: app/scenes/course_detail.gd
+msgid "Licence: %s"
+msgstr ""
+
 #: app/ui/about_page.gd
 msgid "Licences"
 msgstr ""
@@ -2691,6 +2715,10 @@ msgstr ""
 msgid "ORQWA remote"
 msgstr ""
 
+#: app/scenes/courses_tab.gd
+msgid "ORQWA worlds"
+msgstr ""
+
 #: app/ui/ui_theme.gd
 msgid "Oct"
 msgstr ""
@@ -2740,7 +2768,7 @@ msgid "Only {left} left, so bring it home strong!"
 msgstr ""
 
 #: app/scenes/courses_tab.gd
-msgid "Open a GPX route, video or ORQWA course"
+msgid "Open a GPX route, video, ORQWA course or world"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -3231,8 +3259,12 @@ msgstr ""
 msgid "Route"
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "Routes of worlds cannot be ridden in group rides."
+msgstr ""
+
 #: app/scenes/courses_tab.gd
-msgid "Routes, videos and courses"
+msgid "Routes, videos, courses and worlds"
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -4241,6 +4273,14 @@ msgstr ""
 
 #: app/scenes/start_page.gd app/scenes/workouts_tab.gd
 msgid "Workouts"
+msgstr ""
+
+#: app/scenes/courses_tab.gd app/ui/course_card.gd
+msgid "World"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "World: %s"
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd app/ui/group_offer_card.gd

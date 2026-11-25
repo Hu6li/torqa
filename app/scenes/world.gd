@@ -5,9 +5,7 @@ extends Node3D
 enum CameraMode { CHASE, FIRST_PERSON, DRONE }
 
 # i18n-begin: time-of-day and weather names are shown in the setup screen.
-## Sun elevation and azimuth (degrees, azimuth clockwise from north), sun and sky light energy
-## per time of day, with the palette's names of its sun and sky colours. A low sun gets more sky
-## light, so mornings and evenings stay bright and pastel.
+## Sun angles and palette colours per time of day; low sun gets more sky fill.
 const TIMES: Dictionary[String, Dictionary] = {
 	"Morning":
 	{
@@ -61,33 +59,27 @@ const TEXTURES: Dictionary[String, Texture2D] = {
 const CHUNKS_PER_FRAME: int = 6
 ## Chunks further than this are hidden; fog hides the edge.
 const VISIBILITY_RANGE: float = 4500.0
-## The land beyond the corridor reaches 12 km from the route (`orqwa_world::HORIZON`); the
-## camera sees that far, the haze hides its end.
+## Camera range includes the 12 km horizon; haze hides its end.
 const HORIZON_RANGE: float = 14000.0
 ## Buildings are small; beyond this the land-cover colours carry the scene.
 const DETAIL_RANGE: float = 1800.0
 ## Bushes and rocks are smaller still.
 const SMALL_PLANT_RANGE: float = 600.0
-## Sidewalks and curbs are small: beyond this the ground's paving under them carries the look,
-## on every preset. Measured to the middle of a chunk's: none ends nearer than about 360 m.
+## Beyond this, ground paving carries sidewalks; chunk centres keep their ends beyond 360 m.
 const SIDEWALK_RANGE: float = 700.0
-## Tracks and paths are narrow and light: far off they drew bright lines across the crowns that
-## hide them (terrain.gdshader), so they end here, on every preset, measured likewise.
+## End narrow tracks before they draw bright lines across the distant canopy.
 const TRACK_RANGE: float = 1000.0
 const CAMERA_SMOOTHING: float = 6.0
 ## Leaning in and out of bends takes a moment (1 / seconds).
 const LEAN_SMOOTHING: float = 3.0
-## The free camera of simulated rides (#53): metres per second, radians per pixel of mouse and
-## radians per second with Shift + arrows.
+## Simulated free camera (#53): m/s, radians per mouse pixel and Shift-arrow radians/s.
 const FREE_SPEED: float = 25.0
 const FREE_LOOK: float = 0.004
 const FREE_TURN: float = 1.2
 ## A rider moving further than this between frames jumped: the camera follows at once.
 const JUMP_M: float = 50.0
-## Graphics presets (R43): what each turns on. Medium holds 60 fps on a base M1; `distance`
-## scales terrain and details; trees have their own range and uploaded density (R108).
-## `tree_lod_bias` below 1 takes trees' coarser levels sooner: on Low it saves a tablet GPU
-## 2–4 ms per frame.
+## Graphics presets (R43): Medium targets 60 fps on M1; trees have separate ranges/density (R108).
+## Low's earlier tree LODs save tablet GPUs 2–4 ms per frame.
 ## MSAA stays at 2×; 4× previously caused bright distant pixels to spread through bloom.
 const QUALITY: Dictionary[String, Dictionary] = {
 	"low":
@@ -271,6 +263,8 @@ var _rail_material: ShaderMaterial = ShaderMaterial.new()
 ## The railways near the route, on their own lines like the road (#85).
 var _railways: MeshInstance3D
 var _ground_lods: GroundLods = GroundLods.new()
+## A world file's world, when the course is one (R282); ORQWA's own world stays empty then.
+var _authored: AuthoredWorld
 
 @onready var _terrain: Node3D = $Terrain
 @onready var _road: MeshInstance3D = $Road
@@ -290,7 +284,6 @@ func bind(orqwa: OrqwaApp) -> void:
 	_orqwa.profile_changed.connect(_apply_rider)
 
 
-## Whether the free camera flies (its arrows move it).
 func is_free_camera() -> bool:
 	return _free
 
@@ -314,7 +307,6 @@ static func camera_names() -> PackedStringArray:
 	return names
 
 
-## The current camera mode (`CameraMode`).
 func camera() -> int:
 	return _camera_mode
 
@@ -346,6 +338,9 @@ func set_camera(mode: int) -> void:
 
 ## Sets the light, sky, fog and precipitation for a time of day and a weather.
 func apply_conditions(time_of_day: String, weather: String) -> void:
+	if _authored.active():
+		# A world file's light is its author's (R284).
+		return
 	var time: Dictionary = TIMES.get(time_of_day, TIMES["Midday"])
 	var elevation: float = time["elevation"]
 	var azimuth: float = time["azimuth"]
@@ -406,10 +401,10 @@ func apply_conditions(time_of_day: String, weather: String) -> void:
 		material.set_shader_parameter("puddle_color", sky_horizon)
 
 
-## Applies a graphics preset (`QUALITY` key, as `OrqwaApp.graphics_quality()` names it) and the
-## options set apart from it (R90, as `OrqwaApp.graphics_options()` gives them; "auto" follows
-## the preset).
+## Applies a named graphics preset and R90 overrides; "auto" follows the preset.
 func apply_quality(name: String, options: Dictionary = {}) -> void:
+	if _authored != null:
+		_authored.apply_quality(name)
 	var previous_density: float = _quality["tree_density"]
 	var previous_building_detail: bool = _quality["building_detail"]
 	var preset: Dictionary = QUALITY.get(name, QUALITY["medium"])
@@ -523,6 +518,11 @@ func apply_options(options: Dictionary) -> void:
 
 ## How far around the rider chunks are uploaded with graphics `quality` and `options` (R224):
 ## a course's world is ridden once that much of it is built (ADR 0040).
+## How far the scene draws now, metres.
+func view_distance() -> float:
+	return VISIBILITY_RANGE * _distance
+
+
 static func upload_radius(quality: String, options: Dictionary) -> float:
 	var view_distance: String = options.get("view_distance", "auto")
 	var preset: Dictionary = QUALITY.get(view_distance, QUALITY.get(quality, QUALITY["medium"]))
@@ -532,6 +532,9 @@ static func upload_radius(quality: String, options: Dictionary) -> float:
 
 ## The rider (or the free camera) has come where chunks of the world are still being built.
 func waiting_for_world() -> bool:
+	if _authored.active():
+		# A world file is never built, only read.
+		return false
 	_streaming.follow(self)
 	return _streaming.missing()
 
@@ -539,6 +542,8 @@ func waiting_for_world() -> bool:
 ## Every chunk within reach of the rider (or the free camera) where they are now is in the
 ## scene: the rest of a long course never is (ADR 0040).
 func chunks_uploaded() -> bool:
+	if _authored.active():
+		return _authored.ready_around(_streaming._current_focus(self))
 	if _benchmark == null and _chunk_count > 0:
 		_streaming.follow(self)
 	return _streaming.complete(self)
@@ -546,6 +551,8 @@ func chunks_uploaded() -> bool:
 
 ## The visible surroundings of where the rider (or the free camera) is now are in the scene.
 func surroundings_ready() -> bool:
+	if _authored.active():
+		return _authored.ready_around(_streaming._current_focus(self))
 	_streaming.follow(self)
 	return _streaming.nearby_ready()
 
@@ -567,6 +574,9 @@ func _ready() -> void:
 	_ghost = RiderAvatar.new()
 	_group_riders = GroupRidersWorld.new()
 	add_child(_group_riders)
+	_authored = AuthoredWorld.new()
+	_authored.name = "Authored"
+	add_child(_authored)
 	_horizon_ground = MeshInstance3D.new()
 	_horizon_water = MeshInstance3D.new()
 	_railways = MeshInstance3D.new()
@@ -611,7 +621,9 @@ func _ready() -> void:
 	_ghost.ghostly = true
 	_ghost.hide()
 	add_child(_ghost)
-	_make_rain()
+	_rain.draw_pass_1 = RainStreaks.mesh()
+	# Free of the camera's turn, so the rain falls straight down.
+	_rain.top_level = true
 	apply_conditions("Midday", "Clear")
 
 
@@ -634,6 +646,8 @@ func _process(delta: float) -> void:
 	_build_some_chunks()
 	if _orqwa != null and _orqwa.world_failed():
 		return
+	if _authored.active():
+		_authored.update(_camera.global_position, view_distance(), _camera)
 	_ground_lods.add_ready()
 	if _rain.emitting:
 		# Round the camera, falling straight whichever way it looks.
@@ -667,6 +681,7 @@ func _apply_rider() -> void:
 func _on_world_ready(_info: Dictionary) -> void:
 	if not _orqwa.check_world_memory():
 		return
+	_authored.follow(self, _orqwa)
 	apply_quality(_orqwa.graphics_quality(), _orqwa.graphics_options())
 	_find_low_ground()
 	TerrainMaterial.set_route_distances(_terrain_material, _orqwa.route_distances())
@@ -879,26 +894,6 @@ func _fly(delta: float) -> void:
 ## 1 while `key` is held, else 0.
 static func _held(key: Key) -> float:
 	return 1.0 if Input.is_physical_key_pressed(key) else 0.0
-
-
-## Faceted raindrops (#103): slim four-sided diamonds in the pale sky colour; the emitter
-## stands free of the camera's turn so the rain falls straight down.
-func _make_rain() -> void:
-	# A streak a few millimetres thin: drops blur into lines as they fall past.
-	var drop: CylinderMesh = CylinderMesh.new()
-	drop.top_radius = 0.004
-	drop.bottom_radius = 0.004
-	drop.height = 0.6
-	drop.radial_segments = 4
-	drop.rings = 1
-	drop.cap_top = false
-	drop.cap_bottom = false
-	var material: ShaderMaterial = ShaderMaterial.new()
-	material.shader = preload("res://shaders/rain.gdshader")
-	material.set_shader_parameter("color", Palette.color("sky.rain"))
-	drop.material = material
-	_rain.draw_pass_1 = drop
-	_rain.top_level = true
 
 
 ## Fog lying in the low ground of the route (#103): thick on mornings, a trace at midday, and

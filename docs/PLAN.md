@@ -1275,6 +1275,49 @@ main. Each step has its own PR and preserves the security limits in ADR 0035.
 - **Exit:** riders behind separate routers join deliberately, ride together and continue alone
   after dropout; tests demonstrate bounded resources and complete lifecycle cleanup
 
+### Phase 14 — Authored worlds (R282–R299, #433, [ADR 0042](adr/0042-world-files.md), [ADR 0043](adr/0043-signed-licensed-worlds.md))
+
+Worlds built outside ORQWA, ridden as they are ([world-files.md](world-files.md)). Stage 1 is
+the format and riding it; the realistic Lake Biel world is built in a private repository.
+
+- [x] ADR 0042 and the format specification (`.oqx`, format 1)
+- [x] Reader and validator in `orqwa-storage`, with a fuzz target and `orqwa-cli world-check`
+- [x] Routes from a world's points (`Route::from_world`), in the world's own metres
+- [x] Library and app: `worlds/`, one entry per route, opening without building or fetching;
+  rides without positions for worlds not on Earth; no renaming, saving or group rides
+- [x] Godot: runtime glTF sections and assets, levels of detail, terrain layers, the world's
+  light and credits; textures mipmapped (GPU compression needs KTX2/Basis, not yet tested)
+- [x] A test world made by a script; the usage guide in the wiki
+- [x] World type filter and grouping; author-supplied countries per route for offline cards,
+  country search and filtering; rounded covers at any aspect ratio (R286)
+- [x] World pill beside the course name, matching the Video pill (R287)
+- [x] Explicit diffuse-only materials for dry surfaces, including terrain layers (R288)
+- [x] Linked horizon section backgrounds replace loaded ground without overlap or buried cliffs (R289)
+- [x] World cards use standard country codes and names on hover; GPX-sized covers fill the same card bounds (R290–R291)
+- [x] Optional close authored scenery loads only on Ultra, fades per object and releases on movement/downgrade (R292)
+- [x] Authored rider and ghost lanes follow the continuous route through hairpins without a coarse road-index correction (R293)
+- [x] Sequential authored and GPX rides prepare the new entry; scene workers finish before their owner exits (R294)
+- [x] ADR 0043: signed world files, sold as downloads without activation (R295–R298)
+- [x] `orqwa-licence`: hybrid Ed25519 + ML-DSA-65 keys, root certificates, withdrawals in
+  `revocations.json` with each release; aws-lc-rs 1.19 as a direct dependency
+- [x] Signature, sizes and hashes checked in `orqwa_storage::world` before parts are read; the
+  fuzzer reaches the parsers behind the signature
+- [x] `orqwa-cli` `key-new`, `key-certify`, `world-seal` (streaming); the
+  test world sealed with the development key; `orqwa-gd` and `orqwa-cli` refuse dev keys in
+  release builds, which name them beside their version otherwise; tags need a release root
+- [x] World extensions in `world.json`, as in glTF: unknown optional ones ignored, unknown
+  required ones ask for an update (R299)
+- [ ] The maintainers' roots made offline and built in (`RELEASE_ROOTS`) before a release
+- [ ] The shop page: paid worlds as downloads under their licence
+- [ ] Premium video courses in world files (R298): FFmpeg reading stored, seekable entries
+- [ ] Demo world (ADR 0043): the openly licensed, signed, unencrypted Twann – Chasseral world,
+  linked from the website and release pages for riders to download and import; no code in
+  ORQWA. The usage guide says where to get it once it is published
+- [ ] Stage 2 (private repository): Twann – Chasseral from swisstopo data, the demo world above;
+  the private repository's Lake Biel world is renamed to Twann – Chasseral (owner)
+- [ ] Stage 3: an editor; `.oqc` courses as a starting point
+- **Exit:** a rider imports a world file and rides each of its routes offline, as authored
+
 ### The name ORQWA (R102, [ADR 0026](adr/0026-the-name-orqwa.md))
 The project is named ORQWA (orca, torque and watt).
 - [x] Code identifiers: crates `orqwa-*`, `OrqwaApp` and the extension `orqwa_gd`, `ORQWA_*`

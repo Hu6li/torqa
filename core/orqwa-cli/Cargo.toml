@@ -11,8 +11,13 @@ publish.workspace = true
 name = "orqwa-cli"
 path = "src/main.rs"
 
+[features]
+# Trusts and seals with the development keys (`world-seal --dev`): tests and worlds being built.
+dev-keys = ["orqwa-licence/dev-keys"]
+
 [dependencies]
 orqwa-app.workspace = true
+orqwa-licence.workspace = true
 orqwa-domain.workspace = true
 orqwa-net.workspace = true
 orqwa-voice.workspace = true
@@ -28,6 +33,8 @@ orqwa-workouts.workspace = true
 orqwa-world.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 tracing-subscriber.workspace = true
 

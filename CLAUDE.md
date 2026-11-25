@@ -36,6 +36,14 @@ prose: use it on docs, the wiki and UI strings.
   out differently raises `orqwa_world::GENERATOR`; one that changes the stored world's layout or
   what the app makes of it (fields, instance buffers, model names) raises
   `orqwa_world::stored::FORMAT`.
+- **World files (`.oqx`, ADR 0042) stay working for good.** They are sold, and riders expect to
+  ride what they bought in every later ORQWA. Every release opens and rides every world file
+  ever released, as before: never change what a released format means, drop or tighten a rule
+  existing worlds rely on, or make the app read them differently. New features go in as optional
+  extensions (`extensions_used`, glTF extensions, files under `ext/`), so earlier releases still
+  open newer worlds without them. A new `world::FORMAT` needs the maintainer's agreement, and the
+  app then keeps reading every earlier format. Test the change against the released fixtures
+  (`core/fixtures/worlds/`); keep a fixture for each released format and feature.
 
 ## Rust conventions
 

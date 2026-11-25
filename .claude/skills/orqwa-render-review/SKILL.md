@@ -5,6 +5,18 @@ description: How to see ORQWA's 3D world and models without a GPU — render scr
 
 # Rendering ORQWA for review
 
+For optional close authored scenery (R292), compare Medium and Ultra with the same section,
+camera and light. Use the real `AuthoredDetails` controller for the detail group, so a review
+also exercises range and preset behavior. Check an object at the visibility fade, a move
+away/back and a downgrade with a load in flight. Lighter presets must request no group bytes,
+and freed nodes must release their mesh/texture references. Keep essential scenery in the
+ordinary world. `authored_detail_smoke.gd` covers the loader lifecycle without a display.
+
+For authored rider motion (R293), inspect tight hairpins in both directions and compare the
+avatar's trajectory with its heading. A width lookup must not reproject the continuous route
+onto straight sample chords. Check the ghost too, retain generated-road fitting, and preserve
+the authored route bytes, key, elevation and trainer slope.
+
 On a Windows PC with a GPU, render natively instead: `scripts/dev.sh scripts/build-gdext.sh
 release windows` cross-builds the extension into `app/bin/` (ADR 0021), and the portable Godot
 editor on the host runs the same scripts (`app/tools/render_views.gd` with `ROUTE`, `SHOTS`,
@@ -72,6 +84,9 @@ finer terrain belongs only beside close ridden carriageways and under walls.
   For a prepared course, set `COURSE=core/orqwa-gd/courses/twann-chasseral.oqc` and
   `SHOTS="shortcut:4200:2:0,180,-20"` (adjust the distance/camera as needed). This opens its saved
   inputs and builds offline, rather than preparing a GPX with fresh provider requests.
+  A world file renders with `COURSE=<file.oqx> WORLD_ROUTE=<route id>`; its village shots take
+  many minutes in software, so set `RENDER_TIMEOUT` (seconds) above the default 30 minutes,
+  which otherwise stops Godot and silently drops the remaining shots.
 
 - `scripts/render-showcase.sh` (on the host, with the portable Godot editor and a release
   extension in `app/bin/`) — website and gallery pictures of saved courses on a real GPU at

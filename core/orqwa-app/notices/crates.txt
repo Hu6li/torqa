@@ -1,4 +1,4 @@
-Rust libraries in ORQWA, by licence: MIT License (225), BSD 3-Clause "New" or "Revised" License (22), Unicode License v3 (19), Apache License 2.0 (6), Mozilla Public License 2.0 (5), ISC License (4), BSD 2-Clause "Simplified" License (3), Do What The F*ck You Want To Public License (2), zlib License (2), Creative Commons Zero v1.0 Universal (1).
+Rust libraries in ORQWA, by licence: MIT License (225), BSD 3-Clause "New" or "Revised" License (22), Unicode License v3 (19), Apache License 2.0 (6), ISC License (5), Mozilla Public License 2.0 (5), BSD 2-Clause "Simplified" License (3), Do What The F*ck You Want To Public License (2), zlib License (2), Creative Commons Zero v1.0 Universal (1).
 
 ────────────────────────────────────────
 
@@ -419,7 +419,7 @@ limitations under the License.
 ────────────────────────────────────────
 
 Apache License 2.0
-aws-lc-sys 0.45.0, constant_time_eq 0.6.1, sync_wrapper 1.0.2
+aws-lc-sys 0.47.0, constant_time_eq 0.6.1, sync_wrapper 1.0.2
 
 Apache License
 Version 2.0, January 2004
@@ -1603,7 +1603,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ────────────────────────────────────────
 
 BSD 3-Clause "New" or "Revised" License
-aws-lc-sys 0.45.0
+aws-lc-sys 0.47.0
 
 Copyright (c) <year> <owner>.
 
@@ -1833,7 +1833,7 @@ express Statement of Purpose.
 ────────────────────────────────────────
 
 ISC License
-untrusted 0.9.0
+untrusted 0.7.1, untrusted 0.9.0
 
 // Copyright 2015-2016 Brian Smith.
 //
@@ -1879,7 +1879,7 @@ third-party/chromium/LICENSE.
 ────────────────────────────────────────
 
 ISC License
-aws-lc-rs 1.18.1, aws-lc-sys 0.45.0
+aws-lc-rs 1.19.0, aws-lc-sys 0.47.0
 
 ISC License:
 
@@ -4962,7 +4962,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ────────────────────────────────────────
 
 MIT License
-aws-lc-sys 0.45.0
+aws-lc-sys 0.47.0
 
 The MIT License (MIT)
 

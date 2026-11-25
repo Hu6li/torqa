@@ -378,7 +378,14 @@ func _course_gallery() -> void:
 	for chip: Button in _chips(grid):
 		texts.append(chip.text)
 	_check(
-		"3D" in texts and "< 25 km" in texts and "25–50 km" in texts and "≥ 100 km" in texts,
+		(
+			"3D" in texts
+			and "Video" in texts
+			and "World" in texts
+			and "< 25 km" in texts
+			and "25–50 km" in texts
+			and "≥ 100 km" in texts
+		),
 		"chips for type, terrain and length: %s" % texts
 	)
 
@@ -389,6 +396,17 @@ func _course_gallery() -> void:
 	_check(panel.visible, "a click on Filters opens the panel")
 	await process_frame
 	var panel_size: Vector2i = panel.size
+	_chip(tab, "World").button_pressed = true
+	var kinds: PackedStringArray = tab.query()["kinds"]
+	_check(kinds == PackedStringArray(["world"]), "World selects the authored-world type")
+	var active_world: HFlowContainer = tab.get("_active")
+	var world_chips: Array[Button] = _chips(active_world)
+	_check(world_chips.size() == 1 and world_chips[0].text == "World", "World is listed as active")
+	world_chips[0].button_pressed = false
+	kinds = tab.query()["kinds"]
+	_check(
+		kinds.is_empty() and not _chip(tab, "World").button_pressed, "World chip removes its filter"
+	)
 	_chip(tab, "Hilly").button_pressed = true
 	var terrains: PackedStringArray = tab.query()["terrains"]
 	_check(terrains == PackedStringArray(["hilly"]), "a chip narrows down: %s" % terrains)

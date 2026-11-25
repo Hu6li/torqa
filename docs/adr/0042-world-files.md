@@ -1,0 +1,207 @@
+# ADR 0042 — World files (`.oqx`): authored worlds ridden as they are
+
+- Status: proposed (stage 1 of 3: the format and its loading in ORQWA)
+- Date: 2026-11-20
+- Issue: #433
+
+## Context
+
+Every world ORQWA shows today is built by its own generator (`orqwa_world`). The rider brings
+only inputs: a GPX file, or a course file (`.oqc`, [ADR 0007](0007-course-files.md)) packing
+the GPX with the terrain and map tiles it was prepared from. A world a computer keeps
+([ADR 0025](0025-kept-worlds.md)) is a cache: it is built again when it is missing, damaged or
+of another format.
+
+Some worlds should not be built by ORQWA at all. An author wants to correct what the generator
+gets wrong, put real buildings where the map has outlines, model a landmark, or make a whole
+place look as it really does, from data and with tools ORQWA has no business shipping. Such a
+world is the product of the author's work. Rebuilding it from inputs, or replacing its models
+with ORQWA's, destroys that work. These worlds are also to be sold one day, so they travel
+as one file the buyer keeps, not as inputs every rider downloads again.
+
+What a ride needs besides the 3D scene is small. Grade, distance, climbs, the HUD, the trainer's
+slope and the FIT samples all come from the route's points (`orqwa_routes::Route`): position,
+elevation and whether a point lies on the ground, a bridge or in a tunnel. The rider stands at
+the route's elevation, not on the road mesh. The rider's position across the road comes from
+the road's width and the side traffic keeps to. Everything else ORQWA computes when a course
+opens (map, countries, minimap, masks for snow and leaves) belongs to the generator's world.
+
+Options considered:
+
+- **ORQWA's stored world format** (`orqwa_world::stored`, ADR 0025) with custom models added.
+  Little new code, but the format is ORQWA's internal one: its meshes carry ORQWA's meanings in
+  vertex colours, its models are names of models built into the app, and it changes with every
+  `stored::FORMAT`. External tools would have to write it, and authored worlds would break with
+  updates.
+- **A hybrid**: generated parts in the stored format, authored parts as glTF. Two loaders, and
+  the stored format's problems remain for half of the world.
+- **glTF 2.0 for all geometry**, with a small ORQWA description for what glTF cannot say (the
+  routes, the light, where each part of the world lies). Every modelling tool writes glTF;
+  Godot loads it at runtime.
+
+## Decision
+
+An **ORQWA World** is a zip with the extension **`.oqx`**. (`.oqw` is already the shared
+workout format of group rides, [ADR 0037](0037-group-ride-activities.md).) Its full
+specification is [world-files.md](../world-files.md); in short:
+
+```
+world.json                 format, id, name, publisher, licence, attribution, origin, the side
+                           traffic keeps to, the light, sections, assets, horizon, routes
+routes/<id>.json           each route's points: east, north, elevation, surface, road width
+sections/<n>/lod<k>.glb    the world in sections, each in levels of detail (glTF 2.0 binary)
+sections/<n>/instances.bin many copies of the world's assets in that section
+assets/<name>/lod<k>.glb   models placed many times (trees, vines, posts, …)
+horizon.glb                the far landscape, loaded whole
+preview.png                the library's picture
+```
+
+- **The world is authoritative.** ORQWA rides it as stored: it builds nothing, downloads
+  nothing and never regenerates, repairs, rewrites or deletes the file. Only the rider
+  deletes it. Updates of ORQWA and cleared caches leave it as it is. What ORQWA derives from it
+  for speed (textures compressed for the GPU) lives in the cache and can always be made again.
+- **Strictly versioned.** `world.json` carries `format` (1). A newer format is refused with a
+  message that a newer ORQWA is needed, never read in part or rebuilt.
+- **glTF 2.0 binary, self-contained.** Geometry and materials are standard glTF: metallic-
+  roughness PBR, textures embedded as PNG, JPEG or WebP. No external or `data:` URIs. A short
+  list of glTF extensions is allowed. Static scenes only: no animations, skins, cameras or lights.
+- **Instances in ORQWA's own buffers.** Godot's runtime glTF loader ignores
+  `EXT_mesh_gpu_instancing`, so a section lists the copies of each asset in
+  `instances.bin` (a 3×4 transform each, optionally a tint), as ORQWA's own worlds already
+  hand their trees to Godot's `MultiMesh`.
+- **One ORQWA material extension, `ORQWA_terrain_layers`.** Ground textured from aerial
+  photos is blurred at a rider's eye height. The extension adds up to eight tiling detail layers
+  (albedo, normal, roughness), weighted by masks, that fade in near the camera over the base
+  colour. Other glTF viewers show the base colour.
+- **Routes.** A world holds one or more named routes, each listed in the library as a ride of
+  its own. Its points are authoritative for riding: physics, trainer slope, HUD, climbs and
+  statistics come from them as they do from a course's route. The author makes the road
+  surface lie on them. ORQWA turns the points into latitude and longitude from the world's
+  origin (the projection ORQWA's worlds use), so rides, records and ghosts work as on courses.
+  A world not placed on Earth (`located: false`) saves its rides without positions, like a
+  video course without GPS.
+- **The world's own light.** `world.json` gives the sun, the sky (ORQWA's atmosphere lit by
+  that sun, with the author's clouds, or the author's panorama), ambient light and fog. ORQWA's time of day,
+  weather and seasons do not apply, and none of its live effects reach an authored world:
+  no snow, wet roads, puddles, wind or autumn leaves. The rider's graphics quality still sets
+  view distance, levels of detail, shadows and screen effects.
+- **Sections stream like ORQWA's chunks.** A section has a centre and a radius. ORQWA loads the
+  sections near the rider first, in the order and frame budget its own chunks use, and switches
+  a section's levels of detail by distance.
+- **Kept apart from courses.** World files live in `worlds/` in the data directory, beside
+  `courses/`. Importing checks the whole file before copying it in. The library lists one
+  entry per route; deleting one deletes the world with all its routes, after naming them.
+- **Not shared from ORQWA.** Worlds are to be sold. ORQWA offers no export, and world routes
+  cannot be chosen for group rides. `publisher` and `licence` say whose a world is. ORQWA opens
+  only worlds the maintainers signed; sold ones are downloads under their own licence
+  ([ADR 0043](0043-signed-licensed-worlds.md)).
+- **Assets of worlds are not ORQWA's assets.** R47 (assets redistributable with the GPL
+  program) covers what ORQWA ships. A world file carries its own licence and attribution, which
+  the course page shows.
+
+## Stages
+
+1. **This decision**: the format, its validation, and riding world files in ORQWA, with a small
+   test world made by a script.
+2. **A realistic world** of Twann – Chasseral around Lake Biel, built from open Swiss geodata
+   (swisstopo) and CC0 or own models, in a separate, private repository: it is to be sold.
+3. **An editor** to correct and design worlds (#433), and converting `.oqc` courses into world
+   files as a starting point.
+
+## Consequences
+
+**Amendment (2026-11-22, R286).** World routes have a distinct **World** library type.
+Each route may carry its countries and translated names, using the course metadata shape,
+so cards, country search, filters and groups work offline without modifying the world file.
+Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
+
+- Authors work in any tool that writes glTF; ORQWA needs no exporter for stage 1.
+- ORQWA gains a runtime glTF loader. It keeps the author's materials, unlike the loaders of
+  ORQWA's own models, which replace them with ORQWA's shaders.
+- Textures loaded at runtime are not compressed for the GPU: Godot's compressors exist in its
+  editor only (`Image.compress` is unavailable in exported programs). PNG, JPEG and WebP
+  textures take their full size in video memory, with mipmaps ORQWA makes on loading, so
+  authors keep them as small as the view allows. GPU-compressed textures (KTX2 with Basis
+  Universal, `KHR_texture_basisu`, which Godot transcodes to the GPU's own format) may follow
+  once they are tested.
+- *Amended 2026-11-25:* a world made at full detail did not fit a phone. Twann – Chasseral
+  asked for several gigabytes of textures near its start, the same images loaded again in each
+  section. Images identical in their bytes are now loaded once and shared between files, and
+  below Ultra the graphics preset shortens every level's `until_m` (High 75 %, Medium 50 %,
+  Low 20 %) and halves textures holding more pixels than its square (2048², 1024², 512²).
+  Ultra draws the world as its author made it.
+- *Amended 2026-11-25:* images may be stored once. Twann – Chasseral held 2.5 GB of images,
+  0.4 GB of them distinct, each copy read and decoded again. A `.glb`'s image may now name, by
+  a relative glTF `uri`, an entry under `textures/` that `world.json` lists; nothing else is
+  external, and the archive still holds nothing its description does not name. This is plain
+  glTF: an unpacked world opens in any viewer with its textures. `orqwa-cli world-share` moves
+  repeated images there for any tool before packing.
+- *Amended 2026-11-25:* worlds stay readable by older ORQWA when they use something newer. A
+  `.glb` may use glTF extensions ORQWA does not know, as glTF intends, as long as it does not
+  require them. ORQWA leaves them out and draws the file without them: a texture from its PNG
+  beside a later GPU-compressed image. Requiring an unknown extension asks the rider to update.
+  A world extension (`extensions_used` in `world.json`) brings files of its own under
+  `ext/<extension>/`, signed and left unread by an ORQWA that does not know it. Without these
+  rules every new feature would have needed a new format and locked out every earlier ORQWA.
+- World files are large: a realistic 20 km world is expected at several gigabytes. They use
+  ZIP64 and higher limits than course files; [world-files.md](../world-files.md) sets them.
+- Authored worlds look the same in every season and weather. Opt-in material tags that let
+  ORQWA's effects reach chosen parts may follow.
+- A rider cannot ride a world route in a group ride until sharing of bought worlds is decided.
+
+**Amendment (2026-11-23, R288).** `extras.ORQWA_diffuse: true` lets an author disable a dry
+nonmetal surface's specular reflection without making it unlit. This preserves sunlight,
+shadows, normals and vertex colours; terrain layers carry the same response. The flag
+is optional glTF metadata; older viewers ignore it without rejecting the file. Existing
+materials retain their PBR response. Authors must use consistent albedo and lighting across
+tree LODs: swapping a lit near tree for a separately graded unlit atlas changes its colour.
+
+**Amendment (2026-11-24, R289).** Optional node metadata `extras.ORQWA_section` links a
+horizon subtree to its zero-based section index. The viewer shows it only while that section
+is unloaded, including when the horizon arrives after detailed terrain. This allows exact
+coarse background copies and stitched, non-overlapping outer terrain. Burying an overlapping
+horizon by a fixed height created visible cliffs at the covered area's edge; drawing the
+same water footprint in terrain and water meshes also caused depth fighting. Authors must
+give land and water separate footprints with matching shoreline heights. The format stays
+version 1; the optional metadata requires the updated viewer to switch backgrounds.
+
+**Amendment (2026-11-24, R292).** A nearest section scene may name an optional close-detail
+asset through root `extras.ORQWA_ultra_details`. The asset list in `world.json` bounds and
+validates its file, avoiding a second unvalidated resource path or a world-format change.
+The viewer imports this asset as a scene containing small objects, rather than an instanced
+model. Only Ultra requests it. The section's normal content remains independent, and the
+viewer releases the optional scene when it leaves close range or the preset changes.
+Per-object visibility ranges with fades avoid a whole section's clutter switching at once.
+Older viewers ignore the metadata. Authored and generated world storage layouts do not change.
+
+**Amendment (2026-11-24, R293).** An authored road already uses its route as its middle.
+Its spatial width index must supply width without projecting the rider back onto that
+index's straight spans. Reprojection pulled the smooth position sideways in tight bends
+and changed its progress along the lane. Generated roads still use their fitted carriageway
+correction. This fixes avatar and ghost placement without changing the route, its key,
+physics, elevation or stored data; existing worlds need no regeneration for the motion fix.
+
+**Amendment (2026-11-25, R294).** Preparing a new authored ride moves the hidden camera's
+horizontal position to the requested entry. Otherwise the ordinary frame loop can stream
+around the previous ride's camera while preparation streams around the entry, repeatedly
+evicting each other's scenes and preventing the second ride from starting. The normal camera
+pose is set when riding starts. Scene parsing runs through a static worker callable with an
+explicit mailbox and mutex. Both replacing the world and leaving the tree join every pending
+task and free its unattached results before the owner can be destroyed. Active children follow
+Node's normal teardown order. Closing the window or exiting for an update first cancels
+preparation and stops streaming, then keeps processing frames until parsing finishes. A join
+inside engine teardown can deadlock pending scene work. The final tree
+exit therefore has no pending authored workers to join. The world file and the stored-world
+format stay unchanged.
+
+**Amendment (2026-11-24, R295–R298, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
+gains `manifest.json` and `signature.json`. ORQWA opens only world files signed by the
+maintainers. Sold worlds are downloads under their own licence, usable on all of the buyer's
+devices, with no activation. Stage 3's editor stays with the maintainers.
+
+**Amendment (2026-11-24, R299).** `world.json` gains glTF's extension rules:
+`extensions_used`, `extensions_required` and `extensions`. An ORQWA that does not know an
+optional extension ignores it; one that does not know a required extension asks for an update.
+New features for worlds (lights, sound, moving parts, themed worlds' needs) come as extensions,
+so format 1 stays readable by every later ORQWA and older ones open what they can. A new format
+is kept for changes no extension can express.

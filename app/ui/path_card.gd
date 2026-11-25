@@ -34,6 +34,7 @@ func _init() -> void:
 	_lines.draw.connect(_draw_lines)
 	_lines.resized.connect(_lines.queue_redraw)
 	add_child(_lines)
+	resized.connect(queue_redraw)
 
 
 ## Shows the course's map under the track, `png` as the app drew it (with the track on it);
@@ -49,6 +50,7 @@ func set_map(png: PackedByteArray) -> void:
 		_map.texture = ImageTexture.create_from_image(image)
 		_map.show()
 	_lines.queue_redraw()
+	queue_redraw()
 
 
 ## Whether a map shows under the track.
@@ -74,7 +76,14 @@ func _draw() -> void:
 	background.bg_color = BACKGROUND
 	background.set_corner_radius_all(RADIUS)
 	background.anti_aliasing = true
-	draw_style_box(background, Rect2(Vector2.ZERO, size))
+	var area: Rect2 = Rect2(Vector2.ZERO, size)
+	if has_map():
+		# A cover can be square or portrait. Clip its actual bounds, including when it
+		# leaves room at the sides, so its corners round just like a full-width map's.
+		var picture: Vector2 = _map.texture.get_size()
+		var fitted: Vector2 = picture * minf(size.x / picture.x, size.y / picture.y)
+		area = Rect2((size - fitted) / 2.0, fitted)
+	draw_style_box(background, area)
 
 
 func _draw_lines() -> void:

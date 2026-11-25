@@ -9,6 +9,8 @@ const COPIES: String = "user://picked"
 ## ORQWA's Android plugin (ADR 0024), there only on Android: it names picked files the address
 ## itself does not name.
 const ANDROID: StringName = &"OrqwaAndroid"
+## How much of a picked file is held at once while it is copied.
+const CHUNK: int = 8 * 1024 * 1024
 
 
 ## The filters for a file dialog that opens one of `filters`' files: none on Android. Its picker
@@ -36,21 +38,57 @@ static func refusal(picked: String, extensions: PackedStringArray) -> String:
 
 
 ## The path to give the core for `picked`; `picked` itself if an Android file cannot be copied,
-## so the core reports it as unreadable as before.
+## so the core reports it as unreadable as before. Copies on the calling thread: a large file
+## goes through [PickedCopy] instead.
 static func local_path(picked: String) -> String:
 	if not picked.begins_with("content://"):
 		return picked
-	var data: PackedByteArray = FileAccess.get_file_as_bytes(picked)
-	if data.is_empty():
-		return picked
+	var copy: String = copy_of(
+		picked, name_of(picked), func(_done: int, _total: int) -> bool: return true
+	)
+	return copy if not copy.is_empty() else picked
+
+
+## Copies `picked` into ORQWA's folder as `file_name` (from [method name_of], which asks
+## Android and so stays on the main thread) and returns the copy's path; "" if it could not be
+## read or written whole, or `on_chunk(done, total)` returned false to stop. Safe off the main
+## thread.
+static func copy_of(picked: String, file_name: String, on_chunk: Callable) -> String:
+	var source: FileAccess = FileAccess.open(picked, FileAccess.READ)
+	if source == null or source.get_length() == 0:
+		return ""
+	var total: int = source.get_length()
 	DirAccess.make_dir_recursive_absolute(COPIES)
-	var copy: String = COPIES.path_join(name_of(picked))
+	var copy: String = COPIES.path_join(file_name)
 	var file: FileAccess = FileAccess.open(copy, FileAccess.WRITE)
 	if file == null:
-		return picked
-	file.store_buffer(data)
+		return ""
+	# In pieces: a world runs to gigabytes, and Android kills an app that holds one whole.
+	var done: int = 0
+	var whole: bool = true
+	while done < total:
+		var chunk: PackedByteArray = source.get_buffer(CHUNK)
+		# The last read reaching the end sets ERR_FILE_EOF: only a read that brings nothing fails.
+		if chunk.is_empty():
+			break
+		file.store_buffer(chunk)
+		done += chunk.size()
+		if file.get_error() != OK or not on_chunk.call(done, total):
+			whole = false
+			break
 	file.close()
+	# A copy cut short reads as a damaged file to the core: never hand one over.
+	if not whole or done != total:
+		DirAccess.remove_absolute(copy)
+		return ""
 	return ProjectSettings.globalize_path(copy)
+
+
+## Removes `path` if [method local_path] copied it, once the core has its own copy: a world
+## would otherwise keep gigabytes of the rider's storage twice.
+static func forget(path: String) -> void:
+	if path.get_base_dir() == ProjectSettings.globalize_path(COPIES):
+		DirAccess.remove_absolute(path)
 
 
 ## Where the core should write a file the rider wants saved at `picked`; then [method save] it.

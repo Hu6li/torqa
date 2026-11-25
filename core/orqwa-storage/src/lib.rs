@@ -9,6 +9,7 @@ pub mod course;
 pub mod index;
 pub mod profiles;
 pub mod rides;
+pub mod world;
 pub mod worlds;
 
 /// A file-name-safe form of `name`: lowercase letters and digits joined by single hyphens, or

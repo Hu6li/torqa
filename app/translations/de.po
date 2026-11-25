@@ -607,6 +607,12 @@ msgstr "Export nach %s nicht möglich."
 msgid "Could not import %s."
 msgstr "%s konnte nicht importiert werden."
 
+msgid "A world's routes keep the names their author gave them."
+msgstr "Die Routen einer Welt behalten die Namen, die ihnen ihr Autor gegeben hat."
+
+msgid "Routes of worlds cannot be ridden in group rides."
+msgstr "Routen von Welten können nicht in Gruppenfahrten gefahren werden."
+
 msgid "Could not import the workout."
 msgstr "Das Training konnte nicht importiert werden."
 
@@ -1111,6 +1117,12 @@ msgstr "Leicht"
 msgid "Loading %s …"
 msgstr "%s wird geladen …"
 
+msgid "Copying %s …"
+msgstr "%s wird kopiert …"
+
+msgid "Checking %s …"
+msgstr "%s wird geprüft …"
+
 msgid "Loading the course"
 msgstr "Route wird geladen"
 
@@ -1309,8 +1321,8 @@ msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video"
 msgid "Only the HUD, on top of other windows, e.g. over a video (O)"
 msgstr "Nur das HUD, über anderen Fenstern, z. B. über einem Video (O)"
 
-msgid "Open a GPX route, video or ORQWA course"
-msgstr "GPX-Datei, Video oder ORQWA-Strecke öffnen"
+msgid "Open a GPX route, video, ORQWA course or world"
+msgstr "GPX-Datei, Video, ORQWA-Strecke oder -Welt öffnen"
 
 msgid "Open a course first."
 msgstr "Wähle zuerst eine Route aus."
@@ -1513,8 +1525,8 @@ msgstr "Leicht hügelig"
 msgid "Route"
 msgstr "Strecke"
 
-msgid "Routes, videos and courses"
-msgstr "GPX-Routen, Videos und ORQWA-Routen"
+msgid "Routes, videos, courses and worlds"
+msgstr "GPX-Routen, Videos, ORQWA-Routen und -Welten"
 
 msgid "Sat"
 msgstr "Sa"
@@ -1785,6 +1797,21 @@ msgstr "Beim Starten von ORQWA ist ein Fehler aufgetreten."
 
 msgid "ORQWA courses"
 msgstr "ORQWA-Routen"
+
+msgid "ORQWA worlds"
+msgstr "ORQWA-Welten"
+
+msgid "World: %s"
+msgstr "Welt: %s"
+
+msgid "By %s"
+msgstr "Von %s"
+
+msgid "Licence: %s"
+msgstr "Lizenz: %s"
+
+msgid "Deleting it deletes the world %s with all its routes: %s. Your rides on them are kept."
+msgstr "Damit wird die Welt %s mit allen ihren Routen gelöscht: %s. Deine Aktivitäten darauf bleiben erhalten."
 
 msgid "ORQWA is connected. You can close this page."
 msgstr "ORQWA ist verbunden. Du kannst diese Seite schliessen."
@@ -3444,6 +3471,9 @@ msgstr "Die 3D-Welt der Strecke konnte nicht gespeichert werden. Prüfe den frei
 
 msgid "Preparing this course needs about %s more memory; %s is available after reserving %s for Android. Close other apps or lower View distance, then reopen the course."
 msgstr "Die Vorbereitung dieser Strecke benötigt etwa %s zusätzlichen Arbeitsspeicher; %s sind nach einer Reserve von %s für Android verfügbar. Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
+
+msgid "World"
+msgstr "Welt"
 
 msgid "Could not check Android's available memory. Reopen ORQWA and try again."
 msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden. Öffne ORQWA erneut und versuche es noch einmal."
