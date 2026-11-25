@@ -1117,6 +1117,12 @@ msgstr "Leicht"
 msgid "Loading %s …"
 msgstr "%s wird geladen …"
 
+msgid "Copying %s …"
+msgstr "%s wird kopiert …"
+
+msgid "Checking %s …"
+msgstr "%s wird geprüft …"
+
 msgid "Loading the course"
 msgstr "Route wird geladen"
 

@@ -110,12 +110,19 @@ var _name_edit: LineEdit = LineEdit.new()
 var _replace_dialog: ConfirmationDialog = ConfirmationDialog.new()
 ## The file waiting for its course name.
 var _pending: String = ""
-## What the running import is: "" none, "gpx" a route or "video" a video course being
-## prepared, "oqc" a course file, "probe" a video being looked at.
+## What the running import is: "" none, "copy" an Android file being copied in, "gpx" a route
+## or "video" a video course being prepared, "oqc" a course file, "probe" a video being looked
+## at.
 var _importing: String = ""
+var _copy: PickedCopy
 ## The course or world file being imported, removed once the core has copied it (see
 ## [method PickedFile.forget]).
 var _imported_file: String = ""
+
+
+func _exit_tree() -> void:
+	if _copy != null:
+		_copy.stop()
 
 
 func bind(orqwa: OrqwaApp) -> void:
@@ -727,12 +734,44 @@ func _on_file_selected(picked: String) -> void:
 		_status.text = refusal
 		_status.show()
 		return
-	var path: String = PickedFile.local_path(picked)
 	_status.hide()
+	if not picked.begins_with("content://"):
+		_open_picked(picked)
+		return
+	_start_loading("copy", PickedFile.name_of(picked))
+	_loading_label.text = tr("Copying %s …") % PickedFile.name_of(picked).get_file()
+	_copy = PickedCopy.new()
+	_copy.progressed.connect(_on_copy_progressed.bind(_copy))
+	_copy.finished.connect(_on_copied.bind(_copy, picked))
+	_copy.start(picked)
+
+
+# Each copy's signals carry it: one cancelled reports after the next has started.
+func _on_copy_progressed(done: int, total: int, copy: PickedCopy) -> void:
+	if copy == _copy:
+		_loading_bar.value = float(done) / float(maxi(total, 1))
+
+
+func _on_copied(path: String, copy: PickedCopy, picked: String) -> void:
+	if copy != _copy:
+		return
+	_copy = null
+	_stop_loading()
+	# Not copied: the core reports the address itself as unreadable.
+	_open_picked(path if not path.is_empty() else picked)
+
+
+## Opens a picked file the core can read: a world or course file is imported, anything else
+## named first.
+func _open_picked(path: String) -> void:
 	var extension: String = path.get_extension().to_lower()
 	if extension == "oqx":
-		# A world's routes keep their author's names (R282): nothing to name.
-		_importing = "oqc"
+		# A world's routes keep their author's names (R282): nothing to name. Checking a large
+		# world takes a while and cannot be stopped halfway.
+		_start_loading("oqc", path)
+		_loading_label.text = tr("Checking %s …") % path.get_file()
+		_loading_bar.indeterminate = true
+		_cancel_button.hide()
 		_imported_file = path
 		_orqwa.import_course(path)
 		return
@@ -807,7 +846,9 @@ func no_gps_steps(file: String) -> String:
 func _start_loading(kind: String, path: String) -> void:
 	_importing = kind
 	_import_button.disabled = true
+	_loading_bar.indeterminate = false
 	_loading_bar.value = 0.0
+	_cancel_button.show()
 	_loading_label.text = tr("Loading %s …") % path.get_file()
 	_loading.show()
 
@@ -821,9 +862,18 @@ func _on_loading_progress(step: String, unit: String, done: int, total: int) -> 
 
 
 func _cancel_loading() -> void:
+	if _importing == "copy" and _copy != null:
+		_copy.cancel()
+		_copy = null
+		_stop_loading()
+		return
 	if _importing != "gpx" and _importing != "video":
 		return
 	_orqwa.cancel_loading()
+	_stop_loading()
+
+
+func _stop_loading() -> void:
 	_importing = ""
 	_loading.hide()
 	_import_button.disabled = false

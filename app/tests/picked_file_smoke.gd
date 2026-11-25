@@ -41,6 +41,8 @@ func _run() -> void:
 	_check(not PickedFile.refusal("/rides/Ride", routes).is_empty(), "so is one without extension")
 	_check(not PickedFile.refusal(document, routes).is_empty(), "and an unnamed document")
 	_check_forget()
+	_check_copy()
+	await _check_threaded_copy()
 	if not _failed:
 		print("PICKED FILE SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
@@ -57,6 +59,72 @@ func _check_forget() -> void:
 	_check(not FileAccess.file_exists(copy), "an imported copy is removed")
 	_check(FileAccess.file_exists(own), "a file outside ORQWA's copies is kept")
 	DirAccess.remove_absolute(own)
+
+
+## A file of several chunks, its last one short, so the copy reads up to the end of the file.
+func _source() -> String:
+	var path: String = ProjectSettings.globalize_path("user://source.oqx")
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(PickedFile.CHUNK * 2 + 12345)
+	for i: int in range(0, data.size(), 4096):
+		data[i] = i % 251
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	file.store_buffer(data)
+	file.close()
+	return path
+
+
+## Copied whole and as it is, however large; stopped, it leaves nothing for the core to read.
+func _check_copy() -> void:
+	var source: String = _source()
+	var steps: Array[int] = []
+	var copy: String = PickedFile.copy_of(
+		source,
+		"World.oqx",
+		func(done: int, _total: int) -> bool:
+			steps.append(done)
+			return true
+	)
+	_check(not copy.is_empty(), "a file is copied")
+	_check(
+		FileAccess.get_md5(copy) == FileAccess.get_md5(source), "byte for byte, past its last chunk"
+	)
+	_check(steps.size() == 3 and steps[-1] == FileAccess.get_size(source), "in chunks")
+	PickedFile.forget(copy)
+	var stopped: String = PickedFile.copy_of(
+		source, "World.oqx", func(_done: int, _total: int) -> bool: return false
+	)
+	_check(stopped.is_empty(), "a stopped copy is no copy")
+	_check(
+		not FileAccess.file_exists(PickedFile.save_path("content://downloads/World.oqx")),
+		"and leaves no part behind"
+	)
+	_check(
+		(
+			PickedFile
+			. copy_of("/no/such/file.oqx", "x.oqx", func(_d: int, _t: int) -> bool: return true)
+			. is_empty()
+		),
+		"an unreadable file is not copied"
+	)
+	DirAccess.remove_absolute(source)
+
+
+## Off the main thread, with its progress and its end reported on it.
+func _check_threaded_copy() -> void:
+	var source: String = _source()
+	var copy: PickedCopy = PickedCopy.new()
+	var reported: Array[int] = []
+	copy.progressed.connect(func(done: int, _total: int) -> void: reported.append(done))
+	copy.start(source)
+	var path: String = await copy.finished
+	_check(
+		not path.is_empty() and FileAccess.get_md5(path) == FileAccess.get_md5(source),
+		"copied on a thread"
+	)
+	_check(not reported.is_empty(), "reporting how far it is")
+	PickedFile.forget(path)
+	DirAccess.remove_absolute(source)
 
 
 func _check(condition: bool, what: String) -> void:
