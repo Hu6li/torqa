@@ -309,7 +309,8 @@ world's folder is ordinary glTF: viewers and Blender open a section with its tex
 Tools need not do this themselves. `orqwa-cli world-share <folder>` moves every image that two
 or more of a world folder's `.glb` files embed, byte for byte, into `textures/`, names it there
 by `uri` and lists it in `world.json`; images one file holds stay in it. Run it before
-`world-pack` or `world-seal`.
+`world-pack` or `world-seal`, every time: after a tool writes `world.json` anew it lists again
+the textures the files already name.
 
 ### Section backgrounds in the horizon
 
