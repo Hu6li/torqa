@@ -14,7 +14,7 @@ ERROR = re.compile(r"SCRIPT ERROR|SHADER ERROR|^ERROR:", re.MULTILINE)
 HEADLESS = """
 ride ui group_ui seasons touch summary workouts devices window dialog settings benchmark camera
 tree_lod building_detail hud course course_loading rider profile analysis upload error moment
-ride_clock picked_file world_file
+ride_clock picked_file world_file authored_detail
 """.split()
 
 
@@ -56,6 +56,7 @@ def main():
             f"{name.upper().replace('_', ' ')} SMOKE TEST PASSED",
         )
     for name, seconds, options in (
+        ("authored_reload", 120, ["--rendering-driver", "vulkan", "--resolution", "800x450"]),
         ("surface", 120, ["--rendering-driver", "vulkan", "--resolution", "800x240"]),
         ("nameplate_render", 90, ["--rendering-driver", "vulkan", "--resolution", "800x450"]),
         ("path_card_render", 90, ["--rendering-driver", "vulkan", "--resolution", "320x240"]),

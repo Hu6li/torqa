@@ -51,6 +51,35 @@ var _panorama_environment: Environment
 var _panorama_energy: float = 1.0
 var _focus: Vector3 = Vector3.INF
 var _view_m: float = RideWorld.VISIBILITY_RANGE
+var _details: AuthoredDetails
+
+
+func _init() -> void:
+	_details = AuthoredDetails.new(self, _ask)
+
+
+func _exit_tree() -> void:
+	_finish_parsing()
+
+
+## The caller stops streaming first. Frames must keep running while workers finish GPU work.
+func finish_pending() -> void:
+	while true:
+		var pending: bool = false
+		for task: int in _parsing.values():
+			if not WorkerThreadPool.is_task_completed(task):
+				pending = true
+				break
+		if not pending:
+			stop()
+			return
+		await get_tree().process_frame
+
+
+## Optional authored scenery follows the preset, independently of view-distance overrides.
+func apply_quality(quality: String) -> void:
+	_details.apply_quality(quality)
+	_focus = Vector3.INF
 
 
 ## Shows the ride's credits in `label` if `shown`: a world file's own (R282), else the map's
@@ -83,19 +112,8 @@ func start(orqwa: OrqwaApp, info: Dictionary) -> void:
 
 ## Lets go of the world shown, if any.
 func stop() -> void:
-	for task: int in _parsing.values():
-		WorkerThreadPool.wait_for_task_completion(task)
-	_parsing.clear()
-	_made_lock.lock()
-	for node: Node3D in _made.values():
-		if node != null:
-			node.free()
-	_made.clear()
-	_made_lock.unlock()
-	for node: Node3D in _settling.values():
-		if node != null:
-			node.free()
-	_settling.clear()
+	_finish_parsing()
+	_details.clear()
 	for child: Node in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -115,6 +133,24 @@ func stop() -> void:
 	_panorama = ""
 	_panorama_environment = null
 	_focus = Vector3.INF
+
+
+## Workers must release their callables and unattached scenes before this owner is destroyed.
+## Active children are left to Node's normal exit/free order when the tree itself is closing.
+func _finish_parsing() -> void:
+	for task: int in _parsing.values():
+		WorkerThreadPool.wait_for_task_completion(task)
+	_parsing.clear()
+	_made_lock.lock()
+	for node: Node3D in _made.values():
+		if node != null:
+			node.free()
+	_made.clear()
+	_made_lock.unlock()
+	for node: Node3D in _settling.values():
+		if node != null:
+			node.free()
+	_settling.clear()
 
 
 ## Starts the loaded course's world file in `world`, with its own light, or stops the one
@@ -245,6 +281,7 @@ func _plan(camera: Vector3) -> void:
 			_ask(instances)
 		elif _placed.has(index):
 			_choose_asset_lods(index)
+	_details.update(camera, _shown)
 
 
 func _lod_file(section: Dictionary, lod: int) -> String:
@@ -254,7 +291,7 @@ func _lod_file(section: Dictionary, lod: int) -> String:
 
 
 func _ask(file: String) -> void:
-	if _asked.has(file) or _parsing.has(file):
+	if _asked.has(file) or _parsing.has(file) or _settling.has(file):
 		return
 	_asked[file] = true
 	_orqwa.request_world_part(file)
@@ -270,6 +307,8 @@ func _take_parts() -> void:
 		if part == null:
 			continue
 		_asked.erase(file)
+		if _details.registered(file) and not _details.wanted(file):
+			continue
 		if part is String:
 			push_warning("world file part %s: %s" % [file, part])
 			continue
@@ -279,9 +318,11 @@ func _take_parts() -> void:
 		elif part is PackedByteArray:
 			var bytes: PackedByteArray = part
 			if _threaded:
-				_parsing[file] = WorkerThreadPool.add_task(_make_scene.bind(file, bytes))
+				_parsing[file] = WorkerThreadPool.add_task(
+					_make_scene.bind(file, bytes, _made, _made_lock)
+				)
 			else:
-				_make_scene(file, bytes)
+				_make_scene(file, bytes, _made, _made_lock)
 				_made_lock.lock()
 				_settling[file] = _made.get(file)
 				_made.erase(file)
@@ -293,7 +334,9 @@ func _take_parts() -> void:
 
 ## Runs on a worker thread: the scene of a `.glb`, its textures with mipmaps and its ground
 ## with ORQWA's terrain layers.
-func _make_scene(file: String, bytes: PackedByteArray) -> void:
+static func _make_scene(
+	file: String, bytes: PackedByteArray, made: Dictionary[String, Node3D], made_lock: Mutex
+) -> void:
 	var document: GLTFDocument = GLTFDocument.new()
 	var state: GLTFState = GLTFState.new()
 	var node: Node3D = null
@@ -302,12 +345,13 @@ func _make_scene(file: String, bytes: PackedByteArray) -> void:
 		node = document.generate_scene(state) as Node3D
 		if node != null:
 			_tag_backdrops(state)
+			AuthoredDetails.tag(state, node)
 			AuthoredMaterials.use_vertex_colours(node)
 			AuthoredMaterials.apply_terrain_layers(state, node)
 			node.set_meta("cutouts", cutouts)
-	_made_lock.lock()
-	_made[file] = node
-	_made_lock.unlock()
+	made_lock.lock()
+	made[file] = node
+	made_lock.unlock()
 
 
 ## Optional glTF node metadata links a horizon group to a section, without burying either
@@ -375,6 +419,9 @@ func _use_scene(file: String, node: Node3D) -> void:
 		return
 	var cutouts: Array[Array] = node.get_meta("cutouts", [] as Array[Array])
 	AuthoredMaterials.finish_cutouts(cutouts)
+	if _details.registered(file):
+		_details.use_scene(file, node)
+		return
 	if file == _horizon:
 		node.name = "Horizon"
 		_horizon_node = node
@@ -407,6 +454,9 @@ func _use_scene(file: String, node: Node3D) -> void:
 		add_child(node)
 		_section_nodes[index] = node
 		_shown[index] = wanted
+		if wanted == 0:
+			_details.register_section(index, section, node, _assets)
+		_details.update(_focus, _shown)
 		_background_visible(index, false)
 		return
 	# Planned away while it was made.

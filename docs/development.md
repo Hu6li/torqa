@@ -528,6 +528,18 @@ cancellation, workouts, and rides along a course's video, which start without a 
 prepare. Rust tests check spatial ordering, chunk-edge coverage and moving the priority point
 without changing the generated world.
 
+Authored entry preparation also moves the hidden camera horizontally to that entry (R294).
+The normal frame loop streams around the camera while the loading page is visible. Leaving it
+at the previous ride's location made that loop evict the new entry repeatedly. Authored scene
+workers use a static callable with an explicit result mailbox; `stop()` and `_exit_tree()` join
+all pending tasks and free unattached scenes. This keeps work from outliving the scene or the
+GDScript runtime during shutdown. The root handles window close and update-install exit before
+automatic tree teardown: it cancels preparation, stops streaming and keeps processing frames
+until pending scene work finishes. Blocking on workers during engine teardown can deadlock
+the scene work they still need to finish. `authored_reload_smoke.gd` runs with a display so it exercises
+the threaded loader: it saves a first ride, starts a cold second world with a distant old
+camera, switches to GPX and back, then closes during another start with a pending worker.
+
 For showcase pictures (the website, README and [gallery](screenshots.md#showcase)), render
 saved courses on a real GPU with the portable Godot editor and the extension of the
 checked-out commit in `app/bin/` (on macOS, from `main`'s CI artifact):
