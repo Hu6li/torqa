@@ -12,6 +12,15 @@ const REPLAN_M: float = 20.0
 const PARSING: int = 3
 ## How far the camera sees in a world file's world: its horizon may reach far beyond ORQWA's.
 const FAR_M: float = 200000.0
+## Per graphics preset: the share of its author's reach a section's finer levels of detail are
+## shown to, and the longest side of a texture (0: the author's own). A world made for a fast
+## computer ran out of memory on a phone: Low shows full detail to a fifth of the distance.
+const QUALITY: Dictionary[String, Vector2i] = {
+	"low": Vector2i(20, 512),
+	"medium": Vector2i(50, 1024),
+	"high": Vector2i(75, 2048),
+	"ultra": Vector2i(100, 0),
+}
 
 var _orqwa: OrqwaApp
 var _sections: Array[Dictionary] = []
@@ -51,6 +60,8 @@ var _panorama_environment: Environment
 var _panorama_energy: float = 1.0
 var _focus: Vector3 = Vector3.INF
 var _view_m: float = RideWorld.VISIBILITY_RANGE
+## The share of each level's reach shown, from the preset.
+var _reach: float = 1.0
 var _details: AuthoredDetails
 
 
@@ -79,6 +90,9 @@ func finish_pending() -> void:
 ## Optional authored scenery follows the preset, independently of view-distance overrides.
 func apply_quality(quality: String) -> void:
 	_details.apply_quality(quality)
+	var limits: Vector2i = QUALITY.get(quality, QUALITY["ultra"])
+	_reach = limits.x / 100.0
+	AuthoredMaterials.texture_cap = limits.y
 	_focus = Vector3.INF
 
 
@@ -127,6 +141,7 @@ func stop() -> void:
 	_asked.clear()
 	_asset_meshes.clear()
 	_tinted_meshes.clear()
+	AuthoredMaterials.forget_shared()
 	_horizon = ""
 	_horizon_node = null
 	_backgrounds.clear()
@@ -237,7 +252,7 @@ func ready_around(focus: Vector2) -> bool:
 		# nearest is clearly wanted: at the edge of its reach the camera's own plan may differ.
 		var lods: Array = _sections[index]["lods"]
 		var nearest: Dictionary = lods[0]
-		var reach: float = nearest.get("until_m", INF)
+		var reach: float = nearest.get("until_m", INF) * _reach
 		var inside: bool = _distance(_sections[index], here) < reach - 2.0 * REPLAN_M
 		if wanted == 0 and _shown[index] != 0 and inside:
 			return false
@@ -266,7 +281,7 @@ func _plan(camera: Vector3) -> void:
 			for lod: int in lods.size():
 				var level: Dictionary = lods[lod]
 				var until: float = level["until_m"]
-				if distance < until:
+				if distance < until * _reach:
 					wanted = lod
 					break
 		if wanted < 0:
@@ -541,7 +556,7 @@ func _choose_asset_lods(index: int) -> void:
 		var until: PackedFloat32Array = PackedFloat32Array()
 		for level: Dictionary in asset_lods:
 			var limit: float = level.get("until_m", INF)
-			until.append(limit)
+			until.append(limit * _reach)
 		var near_level: int = _level_at(until, nearest)
 		var whole: int = near_level if near_level == _level_at(until, furthest) else -1
 		var was: int = group["whole"]
