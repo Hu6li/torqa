@@ -64,10 +64,15 @@ var _view_m: float = RideWorld.VISIBILITY_RANGE
 ## The share of each level's reach shown, from the preset.
 var _reach: float = 1.0
 var _details: AuthoredDetails
+var _textures: AuthoredTextures
+## `.glb` files read, waiting for the shared images they draw: file → `{bytes, shared}`, the
+## latter image index → texture entry.
+var _waiting: Dictionary[String, Dictionary] = {}
 
 
 func _init() -> void:
 	_details = AuthoredDetails.new(self, _ask)
+	_textures = AuthoredTextures.new(_ask, _threaded)
 
 
 func _exit_tree() -> void:
@@ -142,6 +147,8 @@ func stop() -> void:
 	_asked.clear()
 	_asset_meshes.clear()
 	_tinted_meshes.clear()
+	_waiting.clear()
+	_textures.clear()
 	AuthoredMaterials.forget_shared()
 	_horizon = ""
 	_horizon_node = null
@@ -154,6 +161,7 @@ func stop() -> void:
 ## Workers must release their callables and unattached scenes before this owner is destroyed.
 ## Active children are left to Node's normal exit/free order when the tree itself is closing.
 func _finish_parsing() -> void:
+	_textures.clear()
 	for task: int in _parsing.values():
 		WorkerThreadPool.wait_for_task_completion(task)
 	_parsing.clear()
@@ -235,6 +243,7 @@ func update(camera: Vector3, view_m: float, lens: Camera3D = null) -> void:
 		_view_m = view_m
 		_plan(camera)
 	_take_parts()
+	_start_waiting()
 	_show_ready()
 
 
@@ -323,6 +332,9 @@ func _take_parts() -> void:
 		if part == null:
 			continue
 		_asked.erase(file)
+		if file.begins_with("textures/"):
+			_textures.take(file, part)
+			continue
 		if _details.registered(file) and not _details.wanted(file):
 			continue
 		if part is String:
@@ -333,31 +345,73 @@ func _take_parts() -> void:
 			_use_panorama(image)
 		elif part is PackedByteArray:
 			var bytes: PackedByteArray = part
-			if _threaded:
-				_parsing[file] = WorkerThreadPool.add_task(
-					_make_scene.bind(file, bytes, _made, _made_lock)
-				)
+			var shared: Dictionary[int, String] = AuthoredTextures.shared(file, bytes)
+			if shared.is_empty():
+				_start_scene(file, bytes, {})
 			else:
-				_make_scene(file, bytes, _made, _made_lock)
-				_made_lock.lock()
-				_settling[file] = _made.get(file)
-				_made.erase(file)
-				_made_lock.unlock()
+				_waiting[file] = {"bytes": bytes, "shared": shared}
 		elif part is Array:
 			var groups: Array = part
 			_place_assets(file, groups)
 
 
+## Makes the scenes whose shared images are all decoded now, and lets go of the images no
+## scene still waits for.
+func _start_waiting() -> void:
+	_textures.collect()
+	var needed: Dictionary[String, bool] = {}
+	for file: String in _waiting.keys():
+		var waiting: Dictionary = _waiting[file]
+		var shared: Dictionary[int, String] = waiting["shared"]
+		var entries: Array[String] = shared.values()
+		if _parsing.size() < PARSING and _textures.have(entries):
+			var textures: Dictionary[String, Texture2D] = _textures.textures(entries)
+			var provided: Dictionary[int, Texture2D] = {}
+			for index: int in shared:
+				provided[index] = textures[shared[index]]
+			var bytes: PackedByteArray = waiting["bytes"]
+			_waiting.erase(file)
+			_start_scene(file, bytes, provided)
+			continue
+		for entry: String in entries:
+			needed[entry] = true
+	_textures.release(needed)
+
+
+## Makes the scene of `file` on a worker thread, with the world's shared textures `provided`
+## by image index.
+func _start_scene(
+	file: String, bytes: PackedByteArray, provided: Dictionary[int, Texture2D]
+) -> void:
+	if _threaded:
+		_parsing[file] = WorkerThreadPool.add_task(
+			_make_scene.bind(file, bytes, _made, _made_lock, provided)
+		)
+	else:
+		_make_scene(file, bytes, _made, _made_lock, provided)
+		_made_lock.lock()
+		_settling[file] = _made.get(file)
+		_made.erase(file)
+		_made_lock.unlock()
+
+
 ## Runs on a worker thread: the scene of a `.glb`, its textures with mipmaps and its ground
 ## with ORQWA's terrain layers.
 static func _make_scene(
-	file: String, bytes: PackedByteArray, made: Dictionary[String, Node3D], made_lock: Mutex
+	file: String,
+	bytes: PackedByteArray,
+	made: Dictionary[String, Node3D],
+	made_lock: Mutex,
+	provided: Dictionary[int, Texture2D] = {},
 ) -> void:
 	var document: GLTFDocument = GLTFDocument.new()
 	var state: GLTFState = GLTFState.new()
 	var node: Node3D = null
-	if document.append_from_buffer(bytes, "", state) == OK:
-		var cutouts: Array[Array] = AuthoredMaterials.prepare(state)
+	var readable: PackedByteArray = bytes
+	if not provided.is_empty():
+		readable = AuthoredMaterials.with_placeholders(bytes, provided.keys())
+	if document.append_from_buffer(readable, "", state) == OK:
+		var cutouts: Array[Array] = AuthoredMaterials.prepare(state, provided)
 		node = document.generate_scene(state) as Node3D
 		if node != null:
 			_tag_backdrops(state)

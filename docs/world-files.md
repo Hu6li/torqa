@@ -25,6 +25,7 @@ sections/<…>.bin           copies of assets placed in a section
 assets/<…>.glb             models placed many times
 horizon.glb                optional: the far landscape
 sky/<…>.png|jpg|webp       optional: a sky panorama
+textures/<…>.png|jpg|webp  optional: images several .glb files share
 ```
 
 | Limit | |
@@ -35,6 +36,8 @@ sky/<…>.png|jpg|webp       optional: a sky panorama
 | A route | 64 MiB |
 | A `.glb` or `.bin` | 1 GiB |
 | A sky panorama | 64 MiB |
+| A shared texture | 64 MiB |
+| Shared textures | 100,000 |
 
 ## Coordinates
 
@@ -82,6 +85,7 @@ of a section centred on [e, n, h] lies at east `e + x`, north `n − z` and elev
   "assets": [
     { "name": "beech-a", "lods": [{ "file": "assets/beech-a/lod0.glb", "until_m": 150 }, { "file": "assets/beech-a/lod1.glb" }] }
   ],
+  "textures": ["textures/roof-tiles.jpg"],
   "horizon": "horizon.glb",
   "preview": "preview.png",
   "routes": [
@@ -108,6 +112,7 @@ of a section centred on [e, n, h] lies at east `e + x`, north `n − z` and elev
 | `environment` | The world's light ([below](#light)). |
 | `sections` | At least one. |
 | `assets` | The models `instances` files place, by their index in this list. Names are unique, 1–64 of `a–z 0–9 - _`. |
+| `textures` | Optional: the images several `.glb` files share, under `textures/`, each PNG, JPEG or WebP. See [Shared textures](#shared-textures). |
 | `horizon` | Optional: one `.glb` in world coordinates around the origin, always drawn behind everything. |
 | `preview` | Optional: `preview.png`. |
 | `routes` | At least one. Ids are unique, 1–64 of `a–z 0–9 -`. |
@@ -249,13 +254,15 @@ The world's light is the author's. ORQWA's time of day, weather and seasons do n
 
 ## glTF content
 
-Every `.glb` is glTF 2.0 in its binary form, self-contained:
+Every `.glb` is glTF 2.0 in its binary form, holding everything but the images it shares with
+other files:
 
 - One JSON chunk, then at most one BIN chunk; the header's length is the entry's size.
 - At most one buffer, without `uri`, no longer than the BIN chunk. Buffer views and accessors
   lie within it.
 - Images come from buffer views, as `image/png`, `image/jpeg` or, with `EXT_texture_webp`,
-  `image/webp`. No `uri` anywhere.
+  `image/webp`, or are one of the world's shared textures, named by `uri` (below). No other
+  `uri`.
 - Static scenes: no `animations`, `skins` or `cameras`. Nodes form trees.
 - No sparse accessors.
 - Extensions used are among `KHR_texture_transform`, `KHR_materials_emissive_strength`,
@@ -274,6 +281,35 @@ textures are halved on loading until they hold no more pixels than the preset al
 as a square of 2048 pixels on High, 1024 on Medium and 512 on Low. A long, narrow texture, such
 as a road's strip with its markings, keeps more of its width that way. Ultra draws textures at
 their own size.
+
+### Shared textures
+
+A world repeats its materials' images: the same roof tiles, walls and bark in every section and
+level of detail. Stored in each `.glb`, every copy is read and decoded again. Instead, an image
+may be stored once under `textures/`, listed in `world.json`'s `textures`, and named by the
+images of the `.glb` files that draw it:
+
+```json
+"images": [{ "uri": "../../textures/roof-tiles.jpg" }]
+```
+
+- The `uri` is a relative path, resolved against the folder of the `.glb` naming it as glTF
+  resolves any relative URI, and leads to an entry `textures` lists. It does not climb above the
+  archive's root.
+- It is a plain path: letters, digits, `.`, `_` and `-` between single slashes. No scheme, no
+  leading slash, no `%` escapes.
+- Its extension gives the image's type: `.png`, `.jpg` or `.jpeg`, or `.webp` with
+  `EXT_texture_webp`. A `mimeType`, if given, agrees with it. The entry's bytes start as that
+  type's do.
+- An image may still be stored in the `.glb` itself; a world can mix both.
+
+ORQWA reads and decodes each shared texture once, however many files draw it. Unpacked, a
+world's folder is ordinary glTF: viewers and Blender open a section with its textures.
+
+Tools need not do this themselves. `orqwa-cli world-share <folder>` moves every image that two
+or more of a world folder's `.glb` files embed, byte for byte, into `textures/`, names it there
+by `uri` and lists it in `world.json`; images one file holds stay in it. Run it before
+`world-pack` or `world-seal`.
 
 ### Section backgrounds in the horizon
 

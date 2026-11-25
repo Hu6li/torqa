@@ -1,6 +1,7 @@
 //! The rules a world's glTF binaries follow (`docs/world-files.md`, "glTF content"): glTF 2.0,
-//! self-contained, static, with a short list of extensions. Checked from the JSON chunk and the
-//! BIN chunk's length, without reading the binary data itself.
+//! static, with a short list of extensions, holding everything but the images it shares with
+//! the world's other files. Checked from the JSON chunk and the BIN chunk's length, without
+//! reading the binary data itself.
 
 use std::collections::BTreeSet;
 use std::io::Read;
@@ -24,12 +25,23 @@ const MAX_JSON_BYTES: u64 = 64 * 1024 * 1024;
 const JSON: u32 = 0x4E4F_534A;
 const BIN: u32 = 0x004E_4942;
 
-/// Checks a `.glb` of `length` bytes from `input`, reading its header and JSON; returns how many
-/// bytes it read. The BIN chunk's data is left for the caller to read past.
+/// A `.glb` as checked: how many of its bytes were read, and the images it takes from the
+/// world's shared textures, by `uri` as written, relative to the file.
+#[derive(Debug, Default)]
+pub struct Checked {
+    /// Bytes read: the header and the JSON chunk.
+    pub read: u64,
+    /// The `uri` of every image outside the file.
+    pub shared: Vec<String>,
+}
+
+/// Checks a `.glb` of `length` bytes from `input`, reading its header and JSON. The BIN chunk's
+/// data is left for the caller to read past; the images it names outside itself for the caller
+/// to find among the world's textures.
 ///
 /// # Errors
 /// [`WorldError::Invalid`] naming the rule broken.
-pub fn check_stream(input: &mut impl Read, length: u64) -> Result<u64, WorldError> {
+pub fn check_stream(input: &mut impl Read, length: u64) -> Result<Checked, WorldError> {
     let mut header = [0u8; 20];
     input
         .read_exact(&mut header)
@@ -64,8 +76,8 @@ pub fn check_stream(input: &mut impl Read, length: u64) -> Result<u64, WorldErro
     }
     let gltf: Value =
         serde_json::from_slice(&json).map_err(|e| invalid(format!("glTF JSON: {e}")))?;
-    check(&gltf, bin)?;
-    Ok(read)
+    let shared = check(&gltf, bin)?;
+    Ok(Checked { read, shared })
 }
 
 fn le(bytes: &[u8], at: usize) -> u32 {
@@ -118,7 +130,7 @@ fn names(gltf: &Map<String, Value>, key: &str) -> Result<BTreeSet<String>, World
 }
 
 /// The checks on a parsed glTF with a BIN chunk of `bin` bytes, if any.
-fn check(gltf: &Value, bin: Option<u64>) -> Result<(), WorldError> {
+fn check(gltf: &Value, bin: Option<u64>) -> Result<Vec<String>, WorldError> {
     let gltf = object(gltf, "glTF")?;
     let used = extensions(gltf)?;
     let views = buffer_views(gltf, bin)?;
@@ -126,7 +138,7 @@ fn check(gltf: &Value, bin: Option<u64>) -> Result<(), WorldError> {
     for accessor in accessors {
         accessor_fits(object(accessor, "accessor")?, &views)?;
     }
-    let textures = textures(gltf, views.len(), used.contains("EXT_texture_webp"))?;
+    let (textures, shared) = textures(gltf, views.len(), used.contains("EXT_texture_webp"))?;
     let materials = array(gltf, "materials")?;
     for material in materials {
         texture_references(material, textures)?;
@@ -146,7 +158,7 @@ fn check(gltf: &Value, bin: Option<u64>) -> Result<(), WorldError> {
         }
     }
     index(gltf.get("scene"), scenes.len(), "the scene")?;
-    Ok(())
+    Ok(shared)
 }
 
 /// glTF 2.0, static, with allowed extensions only; returns those used.
@@ -220,18 +232,38 @@ fn buffer_views(
 
 /// Images inside the file in allowed formats, textures pointing at them; returns the number
 /// of textures.
-fn textures(gltf: &Map<String, Value>, views: usize, webp: bool) -> Result<usize, WorldError> {
+/// Textures whose images are PNG, JPEG or WebP, inside the file or shared by `uri`; returns
+/// how many textures there are and the shared images' URIs.
+fn textures(
+    gltf: &Map<String, Value>,
+    views: usize,
+    webp: bool,
+) -> Result<(usize, Vec<String>), WorldError> {
     let images = array(gltf, "images")?;
+    let format = |mime: Option<&str>| {
+        matches!(mime, Some("image/png" | "image/jpeg")) || (webp && mime == Some("image/webp"))
+    };
+    let mut shared = Vec::new();
     for image in images {
         let image = object(image, "image")?;
         let mime = image.get("mimeType").and_then(Value::as_str);
-        let format = matches!(mime, Some("image/png" | "image/jpeg"))
-            || (webp && mime == Some("image/webp"));
-        if image.contains_key("uri")
-            || index(image.get("bufferView"), views, "an image")?.is_none()
-            || !format
-        {
-            return Err(invalid("images are PNG, JPEG or WebP inside the file"));
+        match (image.get("uri"), image.get("bufferView")) {
+            (None, Some(view)) => {
+                index(Some(view), views, "an image")?;
+                if !format(mime) {
+                    return Err(invalid("images are PNG, JPEG or WebP"));
+                }
+            }
+            (Some(Value::String(uri)), None) => {
+                let by_name = mime_of(uri);
+                if !relative(uri) || !format(by_name) || mime.is_some_and(|m| Some(m) != by_name) {
+                    return Err(invalid(format!(
+                        "image uri {uri:?} is not a relative path to a PNG, JPEG or WebP"
+                    )));
+                }
+                shared.push(uri.clone());
+            }
+            _ => return Err(invalid("an image is in the file or named by one uri")),
         }
     }
     let samplers = array(gltf, "samplers")?;
@@ -246,7 +278,31 @@ fn textures(gltf: &Map<String, Value>, views: usize, webp: bool) -> Result<usize
             index(webp.get("source"), images.len(), "a WebP texture")?;
         }
     }
-    Ok(textures.len())
+    Ok((textures.len(), shared))
+}
+
+/// An image's type by its name's extension.
+fn mime_of(uri: &str) -> Option<&'static str> {
+    match uri.rsplit_once('.')?.1 {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+/// A plain relative path: letters, digits, `.`, `_` and `-` in segments between slashes, so it
+/// needs no escaping, names no scheme and reads the same on every system. Where it leads is
+/// the world's to check ([`super::resolve`]).
+fn relative(uri: &str) -> bool {
+    !uri.is_empty()
+        && uri.len() <= 1024
+        && uri.split('/').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        })
 }
 
 /// Meshes whose primitives point at accessors and materials; returns the number of meshes.

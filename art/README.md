@@ -531,10 +531,13 @@ export cannot write; tools building worlds can use it too.
 
 ```sh
 scripts/art.sh blender --background --factory-startup --python art/worlds/test_world.py
-scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli --features dev-keys -- \
+scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-share ../art/worlds/build/test-loop \
+    && cargo run -q -p orqwa-cli --features dev-keys -- \
     world-seal --dev ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
 ```
 
+`world-share` stores the images both sections repeat once, under `textures/`, as a world's
+builder should (docs/world-files.md, Shared textures), so the app's tests read them that way.
 The test world is sealed with the development key ([ADR 0043](../docs/adr/0043-signed-licensed-worlds.md)),
 which only debug and test builds trust.
 

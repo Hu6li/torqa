@@ -130,6 +130,12 @@ Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
   below Ultra the graphics preset shortens every level's `until_m` (High 75 %, Medium 50 %,
   Low 20 %) and halves textures holding more pixels than its square (2048², 1024², 512²).
   Ultra draws the world as its author made it.
+- *Amended 2026-11-25:* images may be stored once. Twann – Chasseral held 2.5 GB of images,
+  0.4 GB of them distinct, each copy read and decoded again. A `.glb`'s image may now name, by
+  a relative glTF `uri`, an entry under `textures/` that `world.json` lists; nothing else is
+  external, and the archive still holds nothing its description does not name. This is plain
+  glTF: an unpacked world opens in any viewer with its textures. `orqwa-cli world-share` moves
+  repeated images there for any tool before packing.
 - World files are large: a realistic 20 km world is expected at several gigabytes. They use
   ZIP64 and higher limits than course files; [world-files.md](../world-files.md) sets them.
 - Authored worlds look the same in every season and weather. Opt-in material tags that let

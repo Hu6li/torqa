@@ -12,6 +12,7 @@
 mod archive;
 pub mod glb;
 pub mod instances;
+mod share;
 #[cfg(test)]
 mod tests;
 
@@ -32,6 +33,8 @@ use thiserror::Error;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+pub use share::{Shared, share_textures};
+
 pub use instances::InstanceGroup;
 pub use orqwa_licence::trust::Trust;
 
@@ -50,12 +53,14 @@ const MAX_DESCRIPTION_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_ROUTE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_PART_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_SKY_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_TEXTURE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SIGNATURE_BYTES: u64 = 1024 * 1024;
 
 const MAX_SECTIONS: usize = 100_000;
 const MAX_ASSETS: usize = 65_536;
+const MAX_TEXTURES: usize = 100_000;
 const MAX_ROUTES: usize = 256;
 const MAX_LODS: usize = 8;
 const MAX_TEXT: usize = 4096;
@@ -130,6 +135,10 @@ pub struct Description {
     /// Models placed many times, by index from `instances` files.
     #[serde(default)]
     pub assets: Vec<Asset>,
+    /// Images several of the world's glTF files draw, each stored once and named by their
+    /// images' `uri` (`textures/…`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub textures: Vec<String>,
     /// The far landscape.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub horizon: Option<String>,
@@ -339,6 +348,7 @@ enum Part {
     Route,
     Sky,
     Preview,
+    Texture,
 }
 
 impl Part {
@@ -348,6 +358,7 @@ impl Part {
             Self::Route => MAX_ROUTE_BYTES,
             Self::Sky => MAX_SKY_BYTES,
             Self::Preview => MAX_PREVIEW_BYTES,
+            Self::Texture => MAX_TEXTURE_BYTES,
         }
     }
 }
@@ -444,18 +455,7 @@ impl Description {
             lods(&asset.lods, "assets/", &mut parts)
                 .map_err(|e| prefixed(&format!("asset {}", asset.name), e))?;
         }
-        if let Some(horizon) = &self.horizon {
-            if horizon != "horizon.glb" {
-                return Err(invalid("the horizon is horizon.glb"));
-            }
-            parts.insert(horizon.as_str(), Part::Glb);
-        }
-        if let Some(preview) = &self.preview {
-            if preview != "preview.png" {
-                return Err(invalid("the preview is preview.png"));
-            }
-            parts.insert(preview.as_str(), Part::Preview);
-        }
+        self.check_files(&mut parts)?;
         if self.routes.is_empty() || self.routes.len() > MAX_ROUTES {
             return Err(invalid("a world has 1 to 256 routes"));
         }
@@ -488,6 +488,31 @@ impl Description {
             name(&route.file, "routes/", ".json", Part::Route, &mut parts)?;
         }
         Ok(parts)
+    }
+
+    /// The shared textures, the horizon and the preview.
+    fn check_files<'a>(&'a self, parts: &mut BTreeMap<&'a str, Part>) -> Result<(), WorldError> {
+        if let Some(horizon) = &self.horizon {
+            if horizon != "horizon.glb" {
+                return Err(invalid("the horizon is horizon.glb"));
+            }
+            parts.insert(horizon.as_str(), Part::Glb);
+        }
+        if let Some(preview) = &self.preview {
+            if preview != "preview.png" {
+                return Err(invalid("the preview is preview.png"));
+            }
+            parts.insert(preview.as_str(), Part::Preview);
+        }
+        if self.textures.len() > MAX_TEXTURES {
+            return Err(invalid("too many textures"));
+        }
+        for texture in &self.textures {
+            let extension = image_extension(texture)
+                .ok_or_else(|| invalid(format!("texture {texture:?} is not PNG, JPEG or WebP")))?;
+            name(texture, "textures/", extension, Part::Texture, parts)?;
+        }
+        Ok(())
     }
 
     /// The route `id` lists, if the world has it.
@@ -525,9 +550,7 @@ impl Environment {
                 if !(0.0..=16.0).contains(energy) {
                     return Err(invalid("sky out of range"));
                 }
-                let extension = [".png", ".jpg", ".jpeg", ".webp"]
-                    .into_iter()
-                    .find(|extension| image.ends_with(extension))
+                let extension = image_extension(image)
                     .ok_or_else(|| invalid("a sky panorama is PNG, JPEG or WebP"))?;
                 name(image, "sky/", extension, Part::Sky, parts)?;
             }
@@ -539,6 +562,46 @@ impl Environment {
         }
         Ok(())
     }
+}
+
+fn image_extension(name: &str) -> Option<&'static str> {
+    [".png", ".jpg", ".jpeg", ".webp"]
+        .into_iter()
+        .find(|extension| name.ends_with(extension))
+}
+
+/// The entry a glTF file's image `uri` names: resolved against the folder of `glb`, the file's
+/// own entry; `None` if it climbs above the archive's root.
+#[must_use]
+pub fn resolve(glb: &str, uri: &str) -> Option<String> {
+    let mut path: Vec<&str> = glb.split('/').collect();
+    path.pop();
+    for segment in uri.split('/') {
+        match segment {
+            "." => {}
+            ".." => {
+                path.pop()?;
+            }
+            segment => path.push(segment),
+        }
+    }
+    Some(path.join("/"))
+}
+
+/// That every image `glb` shares by `uri` is one of `textures`.
+fn shares_textures(
+    glb: &str,
+    shared: &[String],
+    textures: impl Fn(&str) -> bool,
+) -> Result<(), WorldError> {
+    for uri in shared {
+        if !resolve(glb, uri).is_some_and(|entry| textures(&entry)) {
+            return Err(invalid(format!(
+                "{glb}: image {uri:?} is not one of world.json's textures"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn prefixed(at: &str, error: WorldError) -> WorldError {
@@ -886,7 +949,13 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
                         return Err(invalid(format!("{name}: larger than its limit")));
                     }
                     match part {
-                        Part::Glb => glb::check_stream(&mut hashing, declared).map_err(at)?,
+                        Part::Glb => {
+                            let checked = glb::check_stream(&mut hashing, declared).map_err(at)?;
+                            shares_textures(&name, &checked.shared, |entry| {
+                                parts.get(entry) == Some(&Part::Texture)
+                            })?;
+                            checked.read
+                        }
                         Part::Instances => {
                             instances::read(&mut hashing, description.assets.len(), false)
                                 .map_err(at)?
@@ -898,7 +967,7 @@ fn check(path: &Path, trust: Option<&Trust>) -> Result<Description, WorldError> 
                             route.check().map_err(at)?;
                             declared
                         }
-                        Part::Sky | Part::Preview => {
+                        Part::Sky | Part::Preview | Part::Texture => {
                             image(&mut hashing, part == Part::Preview).map_err(at)?
                         }
                     }
@@ -970,6 +1039,7 @@ pub struct WorldFile {
     parts: BTreeMap<String, Known>,
     signer: KeyId,
     signer_name: String,
+    textures: BTreeSet<String>,
     zip: Mutex<ZipArchive<BufReader<File>>>,
 }
 
@@ -1008,12 +1078,14 @@ impl WorldFile {
                 },
             );
         }
+        let textures = description.textures.iter().cloned().collect();
         Ok(Self {
             path: path.to_owned(),
             description,
             parts,
             signer,
             signer_name,
+            textures,
             zip: Mutex::new(zip),
         })
     }
@@ -1061,14 +1133,16 @@ impl WorldFile {
         Ok(bytes)
     }
 
-    /// The bytes of a `.glb` the description names, checked against the format.
+    /// The bytes of a `.glb` the description names, checked against the format. The images it
+    /// shares are read on their own ([`WorldFile::image`], by [`resolve`]).
     ///
     /// # Errors
     /// [`WorldError`] if it cannot be read, or breaks the format.
     pub fn glb(&self, name: &str) -> Result<Vec<u8>, WorldError> {
         let bytes = self.read(name)?;
-        glb::check_stream(&mut bytes.as_slice(), bytes.len() as u64)
+        let checked = glb::check_stream(&mut bytes.as_slice(), bytes.len() as u64)
             .map_err(|e| prefixed(name, e))?;
+        shares_textures(name, &checked.shared, |entry| self.textures.contains(entry))?;
         Ok(bytes)
     }
 
@@ -1102,7 +1176,7 @@ impl WorldFile {
         Ok(route)
     }
 
-    /// The bytes of an image the description names: the preview or a sky panorama.
+    /// The bytes of an image the description names: the preview, a sky panorama or a texture.
     ///
     /// # Errors
     /// [`WorldError`] if it cannot be read, or is not an image of its kind.
@@ -1162,7 +1236,7 @@ pub fn seal(
         {
             let mut input = io::BufReader::new(File::open(from.join(name))?);
             let options = match part {
-                Some(Part::Sky | Part::Preview) => stored,
+                Some(Part::Sky | Part::Preview | Part::Texture) => stored,
                 Some(Part::Glb | Part::Instances | Part::Route) | None => deflated,
             };
             zip.start_file(name, options)?;

@@ -136,6 +136,12 @@ enum Command {
         /// Where to write the certificate.
         out: PathBuf,
     },
+    /// Store the images several of a world folder's glTF files embed once, under `textures/`,
+    /// for those files to name: run on the folder before sealing it.
+    WorldShare {
+        /// The folder holding the world's `world.json`.
+        folder: PathBuf,
+    },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -297,6 +303,7 @@ async fn main() -> Result<()> {
         Command::Workout { workout, ftp } => workout_info(&workout, Watts(ftp)),
         Command::WorldCheck { file, trust } => worlds::check(&file, trust.as_deref()),
         Command::WorldSeal(args) => worlds::seal(&args),
+        Command::WorldShare { folder } => worlds::share(&folder),
         Command::KeyNew { out } => worlds::key_new(&out),
         Command::KeyCertify {
             root,

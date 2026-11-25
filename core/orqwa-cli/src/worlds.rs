@@ -102,6 +102,19 @@ pub fn key_certify(root: &Path, public: &Path, name: &str, out: &Path) -> Result
     Ok(())
 }
 
+/// Stores the images several of a world folder's glTF files embed once, under `textures/`.
+pub fn share(folder: &Path) -> Result<()> {
+    let shared = world::share_textures(folder)
+        .with_context(|| format!("cannot share {}'s textures", folder.display()))?;
+    println!(
+        "{} textures shared by {} files, {} MB smaller",
+        shared.textures,
+        shared.files,
+        shared.bytes_saved / 1_000_000
+    );
+    Ok(())
+}
+
 /// Seals a world folder, then checks the file as importing would.
 pub fn seal(args: &SealArgs) -> Result<()> {
     let (key, certificate) = if args.dev {
