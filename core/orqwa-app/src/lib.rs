@@ -746,6 +746,7 @@ const MAX_TIME_SCALE: f64 = 20.0;
 const NO_PICTURE_AFTER: Duration = Duration::from_secs(5);
 
 /// The application state.
+#[allow(clippy::struct_excessive_bools)] // independent switches, not one state spelled out
 pub struct App {
     runtime: tokio::runtime::Runtime,
     jobs_tx: mpsc::Sender<JobResult>,
@@ -863,6 +864,9 @@ pub struct App {
     /// The world files in the library, read once per version.
     worlds: authored::Library,
     offline: bool,
+    /// Whether opening a course whose file lacks its map's tiles fetches them online. Unit
+    /// tests never do: no server's speed may decide what they see.
+    online_course_maps: bool,
     /// Name and GPX of the loaded route, for saving it as a course.
     loaded: Option<(String, String)>,
     /// Cached files the loaded route and its world were built from.
@@ -981,6 +985,7 @@ impl App {
             authored: None,
             worlds: authored::Library::default(),
             offline: false,
+            online_course_maps: !cfg!(test),
             loaded: None,
             used: UsedFiles::default(),
             ride: None,
@@ -1230,6 +1235,7 @@ impl App {
             orqwa_osm::detail::installed(&cache.join("osm"))
         };
         let in_library = !shared && path.starts_with(self.courses_dir());
+        let online_map = !shared && self.online_course_maps;
         self.spawn_load(load, async move {
             let mut reporter = Reporter {
                 tx: tx.clone(),
@@ -1306,7 +1312,7 @@ impl App {
                 if !outdated_preview {
                     map = course_map(&imported.route, (&cache, true), &used, &mut report).await;
                 }
-                if map.is_none() && !shared {
+                if map.is_none() && online_map {
                     map = course_map(&imported.route, (&cache, false), &used, &mut report).await;
                 }
                 imported.course_map = map;

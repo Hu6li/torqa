@@ -117,6 +117,20 @@ func stop() -> void:
 	_focus = Vector3.INF
 
 
+## Starts the loaded course's world file in `world`, with its own light, or stops the one
+## before when the course has none: ORQWA's own sky and conditions come back then.
+func follow(world: RideWorld, orqwa: OrqwaApp) -> void:
+	var info: Dictionary = orqwa.authored_world()
+	if not info.is_empty():
+		start(orqwa, info)
+		var conditions: Dictionary = info["environment"]
+		light(world, conditions)
+	elif active():
+		stop()
+		world._environment.sky.sky_material = world._sky
+		world.apply_conditions(world._time_of_day, world._weather)
+
+
 ## The light of a world file (R284): its sun, ambient light, sky and fog, whatever time of day,
 ## weather or season the rider chose; no rain, puddles or wind.
 func light(world: RideWorld, conditions: Dictionary) -> void:
