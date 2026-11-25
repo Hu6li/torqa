@@ -17,10 +17,6 @@
   <img src="https://img.shields.io/badge/Godot-4-478CBF?logo=godotengine&logoColor=white" alt="Godot 4">
 </p>
 
-<p align="center">
-  <a href="https://buymeacoffee.com/boss.m8"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
-</p>
-
 ORQWA is a free, open-source indoor cycling app. Import a GPX route or a ride video and ride it
 on your smart trainer, through a 3D world or along the video, alone or with friends.
 
@@ -96,6 +92,23 @@ while signed in to GitHub. See [build details](docs/development.md#builds) for h
 Follow the [getting-started guide](https://github.com/ORQWA/ORQWA/wiki/Getting-started) to set
 up ORQWA and start riding. The [usage wiki](https://github.com/ORQWA/ORQWA/wiki) has guides
 for devices, courses, workouts and more.
+
+## Support ORQWA
+
+ORQWA is free and open source, built in spare time. There is no subscription, no account and no
+ads. If it has become part of your training, you can help it grow:
+
+- [GitHub Sponsors](https://github.com/sponsors/ORQWA): a monthly amount you choose, or a
+  one-time gift. Steady support helps plan new features.
+- Buy Me a Coffee: a quick thank-you after a good ride. Pay by card, no account needed.
+
+<a href="https://buymeacoffee.com/boss.m8"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
+
+Free ways to help: star the repository, [report a bug](https://github.com/ORQWA/ORQWA/issues)
+with the trainer you use, or tell your club about ORQWA.
+
+The money pays for signing certificates and developer accounts, so Windows and macOS stop
+warning when you install ORQWA, and for new worlds, time, and coffee.
 
 ## Contributing
 
