@@ -1265,7 +1265,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "orqwa-domain"
-version = "0.6.5"
+version = "0.7.0"
 
 [[package]]
 name = "orqwa-fuzz"
@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-licence"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "aws-lc-rs",
  "base64",
@@ -1289,7 +1289,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-net"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "base64",
  "netdev",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-osm"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "flate2",
  "futures",
@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-routes"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "orqwa-domain",
  "orqwa-osm",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-storage"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "embedded-io-adapters",
  "orqwa-domain",
@@ -1351,7 +1351,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-terrain"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "image-webp",
  "orqwa-domain",
@@ -1364,7 +1364,7 @@ dependencies = [
 
 [[package]]
 name = "orqwa-world"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "orqwa-domain",
  "orqwa-osm",
