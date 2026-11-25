@@ -13,8 +13,9 @@ const PARSING: int = 3
 ## How far the camera sees in a world file's world: its horizon may reach far beyond ORQWA's.
 const FAR_M: float = 200000.0
 ## Per graphics preset: the share of its author's reach a section's finer levels of detail are
-## shown to, and the longest side of a texture (0: the author's own). A world made for a fast
-## computer ran out of memory on a phone: Low shows full detail to a fifth of the distance.
+## shown to, and the side of the square whose pixels a texture may hold (0: the author's own).
+## A world made for a fast computer ran out of memory on a phone: Low shows full detail to a
+## fifth of the distance.
 const QUALITY: Dictionary[String, Vector2i] = {
 	"low": Vector2i(20, 512),
 	"medium": Vector2i(50, 1024),

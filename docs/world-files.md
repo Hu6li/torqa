@@ -270,8 +270,10 @@ out and vanish as a tree shrinks on screen.
 
 An image several files carry, byte for byte, is loaded once and drawn by all of them, so a
 material's textures may repeat in every section without taking memory each time. Below Ultra,
-textures are halved on loading until no side is longer than the preset allows: 2048 pixels on
-High, 1024 on Medium and 512 on Low. Ultra draws them at their own size.
+textures are halved on loading until they hold no more pixels than the preset allows: as many
+as a square of 2048 pixels on High, 1024 on Medium and 512 on Low. A long, narrow texture, such
+as a road's strip with its markings, keeps more of its width that way. Ultra draws textures at
+their own size.
 
 ### Section backgrounds in the horizon
 

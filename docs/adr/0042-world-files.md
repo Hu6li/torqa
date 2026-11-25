@@ -128,8 +128,8 @@ Omitted countries stay unknown; worlds not placed on Earth cannot supply them.
   asked for several gigabytes of textures near its start, the same images loaded again in each
   section. Images identical in their bytes are now loaded once and shared between files, and
   below Ultra the graphics preset shortens every level's `until_m` (High 75 %, Medium 50 %,
-  Low 20 %) and halves textures beyond its size (2048, 1024, 512 pixels). Ultra draws the
-  world as its author made it.
+  Low 20 %) and halves textures holding more pixels than its square (2048², 1024², 512²).
+  Ultra draws the world as its author made it.
 - World files are large: a realistic 20 km world is expected at several gigabytes. They use
   ZIP64 and higher limits than course files; [world-files.md](../world-files.md) sets them.
 - Authored worlds look the same in every season and weather. Opt-in material tags that let

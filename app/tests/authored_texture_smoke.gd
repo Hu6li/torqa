@@ -24,6 +24,12 @@ func _run() -> void:
 		)
 	)
 	_check(first.get_image().has_mipmaps(), "with mipmaps")
+	# A road's strip, its markings painted in: as narrow as it is, it keeps their width.
+	var strip: Texture2D = _albedo(_section_with_image(Color(0.9, 0.8, 0.1), Vector2i(64, 4096)))
+	_check(
+		strip.get_width() == 32 and strip.get_height() == 2048,
+		"a narrow strip keeps its width: %dx%d" % [strip.get_width(), strip.get_height()]
+	)
 	var other: Texture2D = _albedo(_section_with_image(Color(0.1, 0.5, 0.9)))
 	_check(other != first, "another image is a texture of its own")
 	AuthoredMaterials.texture_cap = 0
@@ -43,9 +49,9 @@ func _run() -> void:
 	quit(1 if _failed else 0)
 
 
-## A section's file: one quad with a 1024 × 512 texture.
-func _section_with_image(colour: Color) -> PackedByteArray:
-	var image: Image = Image.create(1024, 512, false, Image.FORMAT_RGBA8)
+## A section's file: one quad with a texture of `size`.
+func _section_with_image(colour: Color, size: Vector2i = Vector2i(1024, 512)) -> PackedByteArray:
+	var image: Image = Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
 	image.fill(colour)
 	var material: StandardMaterial3D = StandardMaterial3D.new()
 	material.albedo_texture = ImageTexture.create_from_image(image)
