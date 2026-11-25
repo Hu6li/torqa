@@ -51,6 +51,22 @@ pub enum Moment {
         /// How much faster than the best time before.
         gain: Duration,
     },
+    /// The rider finished one of their segments (R300), not faster than before.
+    SegmentDone {
+        /// The segment's name.
+        name: String,
+        /// Time from its start to its end.
+        elapsed: Duration,
+    },
+    /// The rider finished one of their segments faster than ever before (R300).
+    SegmentRecord {
+        /// The segment's name.
+        name: String,
+        /// Time from its start to its end.
+        elapsed: Duration,
+        /// How much faster than the best time before.
+        gain: Duration,
+    },
     /// Half the route lies behind the rider.
     Halfway {
         /// The distance ridden.
@@ -846,6 +862,7 @@ mod tests {
             route_key: Some("gurten".to_owned()),
             route_time: None,
             climbs: Vec::new(),
+            segments: Vec::new(),
             name: None,
             ftp_estimate: None,
             rider_mass: None,

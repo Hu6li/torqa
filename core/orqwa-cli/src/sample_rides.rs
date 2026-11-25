@@ -93,6 +93,7 @@ pub fn write(args: &SampleRidesArgs) -> Result<()> {
                 route_key: None,
                 route_time: None,
                 climbs: Vec::new(),
+                segments: Vec::new(),
                 name: None,
                 ftp_estimate: None,
                 rider_mass: Some(profile.rider_mass),

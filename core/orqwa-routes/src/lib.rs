@@ -7,6 +7,7 @@ mod gpx;
 mod passes;
 mod profile;
 mod projection;
+pub mod segments;
 mod snap;
 mod structures;
 mod turns;

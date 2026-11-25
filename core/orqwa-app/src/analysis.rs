@@ -507,6 +507,7 @@ mod tests {
                 route_key: None,
                 route_time: None,
                 climbs: Vec::new(),
+                segments: Vec::new(),
                 name: None,
                 ftp_estimate: None,
                 rider_mass: mass.map(Kilograms),
@@ -525,6 +526,7 @@ mod tests {
             },
             route_record: false,
             climb_records: Vec::new(),
+            segment_records: Vec::new(),
             power_records: Vec::new(),
         }
     }

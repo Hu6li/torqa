@@ -52,6 +52,8 @@ pub struct RideRecord {
     pub route_time: Option<Duration>,
     /// Times on the route's climbs that the rider completed.
     pub climbs: Vec<ClimbTime>,
+    /// Times on the rider's own segments of the route that they completed (R300).
+    pub segments: Vec<SegmentTime>,
     /// The name the rider gave the ride (R50); `None` shows the route and date.
     pub name: Option<String>,
     /// The FTP an FTP test showed (R22), if the ride was one.
@@ -104,6 +106,41 @@ impl ClimbTime {
     }
 }
 
+/// The time on one of the rider's segments of a ride (R300).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SegmentTime {
+    /// The segment's name when it was ridden.
+    pub name: String,
+    /// Its start, from the route start.
+    pub start: Meters,
+    /// Its end, from the route start.
+    pub end: Meters,
+    /// Time from start to end.
+    pub elapsed: Duration,
+    /// Average power on it.
+    pub avg_power: Option<Watts>,
+}
+
+impl SegmentTime {
+    /// Whether `other` is a time on the same stretch: the rider set both ends, so they match
+    /// to the metre, whatever the segment is called now. A segment moved is a new one.
+    #[must_use]
+    pub fn same_segment(&self, other: &SegmentTime) -> bool {
+        const TOLERANCE_M: f64 = 1.0;
+        (self.start.0 - other.start.0).abs() < TOLERANCE_M
+            && (self.end.0 - other.end.0).abs() < TOLERANCE_M
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SegmentFile {
+    name: String,
+    start_m: f64,
+    end_m: f64,
+    time_s: f64,
+    avg_power_w: Option<f64>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ClimbFile {
     start_m: f64,
@@ -153,6 +190,8 @@ struct RideFile {
     assisted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     analysis: Option<AnalysisFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    segments: Vec<SegmentFile>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -244,6 +283,17 @@ impl From<&RideRecord> for RideFile {
                     avg_power_w: c.avg_power.map(|p| p.0),
                 })
                 .collect(),
+            segments: r
+                .segments
+                .iter()
+                .map(|s| SegmentFile {
+                    name: s.name.clone(),
+                    start_m: s.start.0,
+                    end_m: s.end.0,
+                    time_s: s.elapsed.as_secs_f64(),
+                    avg_power_w: s.avg_power.map(|p| p.0),
+                })
+                .collect(),
         }
     }
 }
@@ -290,6 +340,17 @@ impl From<RideFile> for RideRecord {
                     end: Meters(c.end_m),
                     elapsed: Duration::from_secs_f64(c.time_s.max(0.0)),
                     avg_power: c.avg_power_w.map(Watts),
+                })
+                .collect(),
+            segments: f
+                .segments
+                .into_iter()
+                .map(|s| SegmentTime {
+                    name: s.name,
+                    start: Meters(s.start_m),
+                    end: Meters(s.end_m),
+                    elapsed: Duration::from_secs_f64(s.time_s.max(0.0)),
+                    avg_power: s.avg_power_w.map(Watts),
                 })
                 .collect(),
         }
@@ -456,6 +517,13 @@ mod tests {
                 elapsed: Duration::from_secs(700),
                 avg_power: Some(Watts(260.0)),
             }],
+            segments: vec![SegmentTime {
+                name: "Wabern sprint".to_owned(),
+                start: Meters(200.0),
+                end: Meters(500.0),
+                elapsed: Duration::from_secs(21),
+                avg_power: Some(Watts(780.0)),
+            }],
             name: Some("Morning loop".to_owned()),
             ftp_estimate: Some(Watts(245.0)),
             rider_mass: Some(Kilograms(72.5)),
@@ -509,6 +577,7 @@ mod tests {
         assert_eq!(record.route, "Old");
         assert_eq!(record.route_key, None);
         assert_eq!(record.climbs, []);
+        assert_eq!(record.segments, []);
         assert_eq!(record.name, None);
         assert_eq!(record.uploads, BTreeMap::new());
         assert_eq!(record.rider_mass, None);
@@ -559,6 +628,22 @@ mod tests {
 
         assert!(climb.same_climb(&shifted));
         assert!(!climb.same_climb(&other));
+    }
+
+    #[test]
+    fn a_segment_is_the_same_by_its_ends_not_its_name() {
+        let sprint = record().segments[0].clone();
+        let renamed = SegmentTime {
+            name: "Village sprint".to_owned(),
+            ..sprint.clone()
+        };
+        let moved = SegmentTime {
+            end: Meters(520.0),
+            ..sprint.clone()
+        };
+
+        assert!(sprint.same_segment(&renamed));
+        assert!(!sprint.same_segment(&moved));
     }
 
     #[test]

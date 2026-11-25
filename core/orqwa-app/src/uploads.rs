@@ -929,6 +929,7 @@ mod tests {
             route_key: None,
             route_time: None,
             climbs: Vec::new(),
+            segments: Vec::new(),
             name: name.map(ToOwned::to_owned),
             ftp_estimate: None,
             rider_mass: None,

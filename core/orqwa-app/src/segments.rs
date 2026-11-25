@@ -1,0 +1,412 @@
+//! The rider's own segments of a course (R300): stretches such as a sprint or a favourite climb
+//! that they mark on the course or bring as a GPX track, timed on every ride like the climbs,
+//! with their best time to beat.
+
+use std::path::Path;
+use std::time::Duration;
+
+use orqwa_domain::recording::Sample;
+use orqwa_domain::units::Meters;
+use orqwa_routes::Route;
+use orqwa_session::analysis::{effort, time_at};
+use orqwa_storage::rides::{RideRecord, SegmentTime};
+use orqwa_storage::segments::{self, Segment};
+
+use crate::failure::{Failure, Kind};
+use crate::moments::Moment;
+use crate::{ActiveRide, App, AppError};
+
+/// How far ahead of a segment the ride screen starts showing it, so the rider can get ready.
+const HERALD: Meters = Meters(500.0);
+
+/// One of the rider's segments with their best time on it before this ride.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SegmentBest {
+    /// The segment.
+    pub segment: Segment,
+    /// The rider's fastest time on it, if they have ridden it.
+    pub best: Option<Duration>,
+}
+
+/// The segment the rider is on or coming up to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SegmentProgress {
+    /// The segment.
+    pub segment: Segment,
+    /// How far its start still is; `None` once the rider is on it.
+    pub ahead: Option<Meters>,
+    /// Distance ridden on it so far.
+    pub ridden: Meters,
+    /// Time on it so far.
+    pub elapsed: Duration,
+    /// The rider's best time on it before this ride.
+    pub best: Option<Duration>,
+}
+
+/// Where the segment ends lie in a ride's samples, which count from where the ride entered.
+fn in_ride(segment: &Segment, entry: Meters) -> (Meters, Meters) {
+    (
+        Meters(segment.start_m - entry.0),
+        Meters(segment.end_m - entry.0),
+    )
+}
+
+fn probe(segment: &Segment) -> SegmentTime {
+    SegmentTime {
+        name: segment.name.clone(),
+        start: Meters(segment.start_m),
+        end: Meters(segment.end_m),
+        elapsed: Duration::ZERO,
+        avg_power: None,
+    }
+}
+
+/// The fastest time on `segment` among `records`, which are on its route.
+pub(crate) fn best_time(records: &[&RideRecord], segment: &SegmentTime) -> Option<Duration> {
+    records
+        .iter()
+        .filter(|r| !r.assisted)
+        .flat_map(|r| r.segments.iter())
+        .filter(|other| other.same_segment(segment))
+        .map(|other| other.elapsed)
+        .min()
+}
+
+/// Each of `segments` with the rider's best time on it among `same_route`.
+pub(crate) fn bests(segments: Vec<Segment>, same_route: &[&RideRecord]) -> Vec<SegmentBest> {
+    segments
+        .into_iter()
+        .map(|segment| {
+            let best = best_time(same_route, &probe(&segment));
+            SegmentBest { segment, best }
+        })
+        .collect()
+}
+
+/// For each segment of a ride entering at `entry`, whether it is done before the ride starts:
+/// one that starts behind the rider is not timed.
+pub(crate) fn passed(records: &[SegmentBest], entry: Meters) -> Vec<bool> {
+    records
+        .iter()
+        .map(|s| s.segment.start_m < entry.0)
+        .collect()
+}
+
+/// The segments the rider has completed since the last look, as moments; `real` false (a
+/// simulated or assisted ride) sets no records.
+pub(crate) fn timed(active: &mut ActiveRide, real: bool) -> Vec<Moment> {
+    let entry = active.ride.entry_distance();
+    let mut moments = Vec::new();
+    for (record, done) in active
+        .records
+        .segments
+        .iter()
+        .zip(&mut active.segments_done)
+    {
+        if *done {
+            continue;
+        }
+        let (start, end) = in_ride(&record.segment, entry);
+        let Some(effort) = effort(active.ride.samples(), start, end) else {
+            continue;
+        };
+        *done = true;
+        let name = record.segment.name.clone();
+        let elapsed = effort.elapsed;
+        moments.push(match record.best.filter(|best| real && elapsed < *best) {
+            Some(best) => Moment::SegmentRecord {
+                name,
+                elapsed,
+                gain: best.saturating_sub(elapsed),
+            },
+            None => Moment::SegmentDone { name, elapsed },
+        });
+    }
+    moments
+}
+
+/// The times of a finished ride on the segments it rode from their start; none unless the
+/// ride `counts` for records.
+pub(crate) fn times(
+    records: &[SegmentBest],
+    samples: &[Sample],
+    entry: Meters,
+    counts: bool,
+) -> Vec<SegmentTime> {
+    records
+        .iter()
+        .filter(|s| counts && s.segment.start_m >= entry.0)
+        .filter_map(|s| {
+            let (start, end) = in_ride(&s.segment, entry);
+            effort(samples, start, end).map(|e| SegmentTime {
+                elapsed: e.elapsed,
+                avg_power: e.avg_power,
+                ..probe(&s.segment)
+            })
+        })
+        .collect()
+}
+
+impl App {
+    pub(crate) fn stored_segments(&self, route: &Route) -> Vec<Segment> {
+        segments::load(&self.data_dir, &self.profile.id, &route.key())
+            .inspect_err(|error| tracing::warn!(%error, "cannot read the course's segments"))
+            .unwrap_or_default()
+    }
+
+    /// The active rider's segments of the loaded course, in the order they were added, with
+    /// their best times.
+    #[must_use]
+    pub fn segments(&self) -> Vec<SegmentBest> {
+        self.route()
+            .map(|route| self.records_for(route).segments)
+            .unwrap_or_default()
+    }
+
+    fn save_segments(&self, change: impl FnOnce(&mut Vec<Segment>)) -> Result<(), AppError> {
+        let route = self.route().ok_or(AppError::NoRoute)?;
+        let mut list = segments::load(&self.data_dir, &self.profile.id, &route.key())
+            .map_err(|e| Failure::new(Kind::SaveSegment, e))?;
+        change(&mut list);
+        segments::save(
+            &self.data_dir,
+            &self.profile.id,
+            &route.key(),
+            route.length().0,
+            &list,
+        )
+        .map_err(|e| Failure::new(Kind::SaveSegment, e).into())
+    }
+
+    /// Adds a segment named `name` from `start` to `end` along the loaded course; returns its
+    /// id.
+    ///
+    /// # Errors
+    /// No loaded route, a segment without a name, too short or off the course, or a
+    /// file-system failure.
+    pub fn add_segment(&self, name: &str, start: Meters, end: Meters) -> Result<u32, AppError> {
+        let mut id = 0;
+        self.save_segments(|list| {
+            id = list.iter().map(|s| s.id).max().map_or(1, |max| max + 1);
+            list.push(Segment {
+                id,
+                name: name.trim().to_owned(),
+                start_m: start.0,
+                end_m: end.0,
+            });
+        })?;
+        Ok(id)
+    }
+
+    /// Renames or moves the segment `id` of the loaded course. Moved, it is a new stretch, and
+    /// its times start again.
+    ///
+    /// # Errors
+    /// As [`App::add_segment`].
+    pub fn change_segment(
+        &self,
+        id: u32,
+        name: &str,
+        start: Meters,
+        end: Meters,
+    ) -> Result<(), AppError> {
+        self.save_segments(|list| {
+            if let Some(segment) = list.iter_mut().find(|s| s.id == id) {
+                name.trim().clone_into(&mut segment.name);
+                segment.start_m = start.0;
+                segment.end_m = end.0;
+            }
+        })
+    }
+
+    /// Removes the segment `id` of the loaded course; the times ridden on it stay with the rides.
+    ///
+    /// # Errors
+    /// No loaded route or a file-system failure.
+    pub fn remove_segment(&self, id: u32) -> Result<(), AppError> {
+        self.save_segments(|list| list.retain(|s| s.id != id))
+    }
+
+    /// Where the track of the GPX file at `path` lies on the loaded course, with the file's name
+    /// for it: a segment to add.
+    ///
+    /// # Errors
+    /// No loaded route, an unreadable file, or a track that does not follow the course.
+    pub fn segment_from_gpx(&self, path: &Path) -> Result<(String, Meters, Meters), AppError> {
+        let route = self.route().ok_or(AppError::NoRoute)?;
+        let file = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let xml = std::fs::read_to_string(path)
+            .map_err(|e| Failure::new(Kind::ReadFile, e).arg(&file))?;
+        let track = orqwa_routes::track_points(&xml)
+            .map_err(|e| Failure::new(Kind::ReadFile, e).arg(&file))?;
+        let (start, end) = orqwa_routes::segments::locate(route, &track).ok_or_else(|| {
+            Failure::new(Kind::SegmentRoute, "the track leaves the course").arg(&file)
+        })?;
+        let name = orqwa_routes::route_name(&xml)
+            .map(|n| n.trim().to_owned())
+            .filter(|n| !n.is_empty())
+            .or_else(|| {
+                path.file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+            })
+            .unwrap_or_default();
+        let name: String = name.chars().take(segments::MAX_NAME_CHARS).collect();
+        Ok((name, start, end))
+    }
+
+    /// The segment the rider is on, or else the next one within a few hundred metres; on
+    /// overlapping segments, the one ending first.
+    #[must_use]
+    pub fn current_segment(&self) -> Option<SegmentProgress> {
+        let active = self.ride.as_ref()?;
+        let state = active.ride.state();
+        let entry = active.ride.entry_distance();
+        let open = active
+            .records
+            .segments
+            .iter()
+            .zip(&active.segments_done)
+            .filter(|(_, done)| !**done)
+            .map(|(s, _)| s);
+        let (on, ahead): (Vec<&SegmentBest>, Vec<&SegmentBest>) =
+            open.partition(|s| s.segment.start_m <= state.distance.0);
+        if let Some(record) = on
+            .into_iter()
+            .filter(|s| state.distance.0 < s.segment.end_m)
+            .min_by(|a, b| a.segment.end_m.total_cmp(&b.segment.end_m))
+        {
+            let started = time_at(active.ride.samples(), in_ride(&record.segment, entry).0)
+                .unwrap_or(state.elapsed);
+            return Some(SegmentProgress {
+                segment: record.segment.clone(),
+                ahead: None,
+                ridden: Meters(state.distance.0 - record.segment.start_m),
+                elapsed: state.elapsed.saturating_sub(started),
+                best: record.best,
+            });
+        }
+        let next = ahead
+            .into_iter()
+            .min_by(|a, b| a.segment.start_m.total_cmp(&b.segment.start_m))?;
+        let to_go = next.segment.start_m - state.distance.0;
+        (to_go <= HERALD.0).then(|| SegmentProgress {
+            segment: next.segment.clone(),
+            ahead: Some(Meters(to_go)),
+            ridden: Meters(0.0),
+            elapsed: Duration::ZERO,
+            best: next.best,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write as _;
+
+    use super::*;
+    use crate::tests::{ride_to_the_finish, run_until, temp_dir, write_climb_route};
+    use crate::{AppEvent, GhostChoice};
+
+    fn loaded(name: &str) -> (std::path::PathBuf, App) {
+        let dir = temp_dir(name);
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(write_climb_route(&dir), true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        (dir, app)
+    }
+
+    #[test]
+    fn segments_are_marked_renamed_and_removed_on_the_loaded_course() {
+        let (dir, app) = loaded("segments-edit");
+        let sprint = app
+            .add_segment(" Village sprint ", Meters(100.0), Meters(300.0))
+            .unwrap();
+        let climb = app
+            .add_segment("The hill", Meters(300.0), Meters(900.0))
+            .unwrap();
+        assert_ne!(sprint, climb);
+        let names: Vec<String> = app.segments().into_iter().map(|s| s.segment.name).collect();
+        assert_eq!(names, ["Village sprint", "The hill"]);
+
+        app.change_segment(climb, "Hill", Meters(300.0), Meters(850.0))
+            .unwrap();
+        assert_eq!(app.segments()[1].segment.name, "Hill");
+        assert_eq!(app.segments()[1].segment.end_m, 850.0);
+        app.remove_segment(sprint).unwrap();
+        assert_eq!(app.segments().len(), 1);
+
+        // Nothing unnamed, too short, backwards or beyond the course is kept.
+        for (name, start, end) in [
+            ("", 0.0, 200.0),
+            ("Short", 100.0, 120.0),
+            ("Backwards", 600.0, 400.0),
+            ("Beyond", 900.0, 5000.0),
+        ] {
+            assert!(app.add_segment(name, Meters(start), Meters(end)).is_err());
+        }
+        assert_eq!(app.segments().len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_gpx_track_along_the_course_becomes_a_segment_and_one_elsewhere_does_not() {
+        let (dir, app) = loaded("segments-gpx");
+        // Along the course from 400 m to 800 m (it runs due north from 46° N, 7° E).
+        let gpx = |name: &str, lon: f64| {
+            let path = dir.join(format!("{name}.gpx"));
+            let mut file = std::fs::File::create(&path).unwrap();
+            write!(file, "<gpx><trk><name>{name}</name><trkseg>").unwrap();
+            for i in 40..=80 {
+                let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+                write!(file, r#"<trkpt lat="{lat}" lon="{lon}"/>"#).unwrap();
+            }
+            write!(file, "</trkseg></trk></gpx>").unwrap();
+            path
+        };
+
+        let (name, start, end) = app.segment_from_gpx(&gpx("Steep bit", 7.0)).unwrap();
+        assert_eq!(name, "Steep bit");
+        assert!((start.0 - 400.0).abs() < 15.0, "{start:?}");
+        assert!((end.0 - 800.0).abs() < 15.0, "{end:?}");
+        assert!(matches!(
+            app.segment_from_gpx(&gpx("Elsewhere", 7.01)),
+            Err(AppError::Reported(Failure {
+                kind: Kind::SegmentRoute,
+                ..
+            }))
+        ));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn segments_are_timed_against_the_riders_best() {
+        let (dir, mut app) = loaded("segments-ride");
+        app.add_segment("Sprint", Meters(50.0), Meters(250.0))
+            .unwrap();
+
+        let first = ride_to_the_finish(&mut app, &GhostChoice::None);
+        let time = first.iter().find_map(|e| match e {
+            AppEvent::Moment(Moment::SegmentDone { name, elapsed }) if name == "Sprint" => {
+                Some(*elapsed)
+            }
+            _ => None,
+        });
+        assert!(time.is_some_and(|t| t > Duration::ZERO), "{first:?}");
+        assert_eq!(app.segments()[0].best, time);
+        let history = app.history();
+        assert_eq!(history[0].record.segments.len(), 1);
+        assert_eq!(history[0].segment_records, [true]);
+
+        // Renamed, it keeps its times; moved, it is a new stretch without any.
+        let id = app.segments()[0].segment.id;
+        app.change_segment(id, "Town sprint", Meters(50.0), Meters(250.0))
+            .unwrap();
+        assert_eq!(app.segments()[0].best, time);
+        app.change_segment(id, "Town sprint", Meters(60.0), Meters(250.0))
+            .unwrap();
+        assert_eq!(app.segments()[0].best, None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
