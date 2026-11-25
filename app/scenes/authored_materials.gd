@@ -11,9 +11,11 @@ const MAX_LAYERS: int = 8
 ## A layer's average colour is never darker than this, so a dark layer cannot blow up the base.
 const DARKEST_MEAN: float = 0.02
 
-## Textures are halved until no side is longer than this (0: as the author made them), set
-## by the graphics preset. A world's sections carry their textures at full size each: on
-## a phone they did not fit its memory.
+## Textures are halved until they hold no more pixels than a square this wide (0: as the
+## author made them), set by the graphics preset. A world's sections carry their textures at
+## full size each: on a phone they did not fit its memory. By their pixels, not their longest
+## side: a road's long, narrow strip, its markings painted in, otherwise shrank until the bars
+## of a crossing ran together into one line.
 static var texture_cap: int = 0
 ## Images several sections carry, made once and drawn by all: source bytes and cap → a weak
 ## reference to the texture, so one goes when the last section using it does. Worlds repeat
@@ -76,7 +78,7 @@ static func forget_shared() -> void:
 
 
 static func _cap(image: Image) -> void:
-	while texture_cap > 0 and maxi(image.get_width(), image.get_height()) > texture_cap:
+	while texture_cap > 0 and image.get_width() * image.get_height() > texture_cap * texture_cap:
 		image.shrink_x2()
 
 
