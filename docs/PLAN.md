@@ -1307,7 +1307,7 @@ the format and riding it; the realistic Lake Biel world is built in a private re
   release builds, which name them beside their version otherwise; tags need a release root
 - [x] World extensions in `world.json`, as in glTF: unknown optional ones ignored, unknown
   required ones ask for an update (R299)
-- [ ] The maintainers' roots made offline and built in (`RELEASE_ROOTS`) before a release
+- [x] The maintainers' roots made offline and built in (`RELEASE_ROOTS`) before a release
 - [ ] The shop page: paid worlds as downloads under their licence
 - [ ] Premium video courses in world files (R298): FFmpeg reading stored, seekable entries
 - [ ] Demo world (ADR 0043): the openly licensed, signed, unencrypted Twann – Chasseral world,

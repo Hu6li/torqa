@@ -220,7 +220,10 @@ pub fn certify(
 
 /// The maintainers' roots, as `PublicKey` JSON. Made offline with `orqwa-cli key-new --root`;
 /// a new root comes with a release, and one is removed only if it leaks (ADR 0043).
-const RELEASE_ROOTS: &[&str] = &[];
+const RELEASE_ROOTS: &[&str] = &[
+    include_str!("../roots/root-primary.pub.json"),
+    include_str!("../roots/root-backup.pub.json"),
+];
 
 /// The withdrawals of this release: edit `revocations.json` to withdraw a key or a world version.
 const BUILTIN_REVOCATIONS: &str = include_str!("../revocations.json");
@@ -318,6 +321,19 @@ mod tests {
     fn the_builtin_trust_parses() {
         let trust = Trust::builtin();
         assert!(trust.roots.contains(crate::dev::root().public()));
+    }
+
+    #[test]
+    fn the_release_roots_are_a_primary_and_a_backup_of_their_own() {
+        // A root of the wrong length would verify nothing; a repeated one is no backup.
+        let roots: Vec<PublicKey> = RELEASE_ROOTS
+            .iter()
+            .map(|text| serde_json::from_str(text).unwrap())
+            .collect();
+        assert_eq!(roots.len(), 2);
+        assert!(roots.iter().all(PublicKey::well_formed));
+        assert_ne!(roots[0].id(), roots[1].id());
+        assert!(!roots.contains(crate::dev::root().public()));
     }
 
     #[test]
