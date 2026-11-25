@@ -5,7 +5,7 @@
 //! is there, and checks each part again as it reads it: the file may have changed on disk since.
 //! Nothing here writes to, repairs or deletes a world file.
 //!
-//! Only files the maintainers signed open (ADR 0043, R292): `manifest.json` lists every other
+//! Only files the maintainers signed open (ADR 0043, R295): `manifest.json` lists every other
 //! entry with its SHA-512 and `signature.json` signs it. The signature is checked before
 //! anything else is read, and each entry against its hash whenever it is read.
 
@@ -84,10 +84,10 @@ pub enum WorldError {
     /// The file breaks a rule of the format: which, and where.
     #[error("{0}")]
     Invalid(String),
-    /// The file has no signature (R292).
+    /// The file has no signature (R295).
     #[error("this world is not signed by ORQWA")]
     Unsigned,
-    /// The signature, its key or the world was refused (R292, R294).
+    /// The signature, its key or the world was refused (R295, R297).
     #[error("{0}")]
     Licence(#[from] LicenceError),
 }
@@ -798,7 +798,7 @@ pub fn read_description(path: &Path, trust: &Trust) -> Result<Description, World
     Ok(signed(&mut open_zip(path)?, Some(trust))?.description)
 }
 
-/// Checks a whole world file against the format (R282, R292): its signature, its archive, its
+/// Checks a whole world file against the format (R282, R295): its signature, its archive, its
 /// description and every part it names, each read to its last byte and compared with its
 /// signed hash. Run on a worker: it reads gigabytes.
 ///

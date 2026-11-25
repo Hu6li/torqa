@@ -224,6 +224,46 @@ fn ride(app: &mut App, path: PathBuf) -> PathBuf {
 }
 
 #[test]
+fn authored_hairpins_keep_the_rider_and_ghost_on_the_continuous_lane() {
+    use orqwa_routes::{LocalProjection, Route, Surface, WorldPoint};
+    for side in [-1.0, 1.0] {
+        let points: Vec<WorldPoint> = (0..=180)
+            .map(|step| {
+                let angle = f64::from(step) * std::f64::consts::PI / 180.0;
+                WorldPoint {
+                    east: side * 8.0 * angle.cos(),
+                    north: 8.0 * angle.sin(),
+                    elevation: 500.0 + f64::from(step) * 0.02,
+                    surface: Surface::Ground,
+                }
+            })
+            .collect();
+        let route = Route::from_world(None, (47.09, 7.16), &points).unwrap();
+        let widths = authored::road_widths(&route, &vec![5.0; route.points().len()]);
+        let projection = LocalProjection::for_route(&route);
+        for step in 20..220 {
+            let distance = Meters(f64::from(step) * 0.1);
+            let at = route.position(distance);
+            let centre = projection.project(at.lat, at.lon);
+            for ghost in [false, true] {
+                let actual = crate::traffic::position(&route, &[], &widths, distance, ghost);
+                let offset = 1.25 * if ghost { 0.35 } else { 1.0 };
+                let wanted = (
+                    centre.0 + at.heading.cos() * offset,
+                    centre.1 - at.heading.sin() * offset,
+                );
+                let error = (actual.0 - wanted.0).hypot(actual.1 - wanted.1);
+                assert!(
+                    error < 1e-6,
+                    "lane pulled off its curve at {} m: {error}",
+                    distance.0
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn a_worlds_route_is_ridden_as_authored_without_building_or_fetching() {
     let dir = temp_dir("world-ride");
     let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();

@@ -4,7 +4,7 @@ The specification of world files: complete worlds an author builds outside ORQWA
 ride as they are ([ADR 0042](adr/0042-world-files.md), R282–R285). It is written for authors
 and for tools that write world files. ORQWA refuses a file that breaks a rule below and says
 which rule. ORQWA opens only files the maintainers signed; sold worlds are downloads under
-their own licence ([ADR 0043](adr/0043-signed-licensed-worlds.md), R292–R294).
+their own licence ([ADR 0043](adr/0043-signed-licensed-worlds.md), R295–R297).
 
 ## The file
 
@@ -187,6 +187,27 @@ then per group:
 
 Matrices may rotate and scale but not shear. A file ends after its last group.
 
+### Optional close scenery on Ultra
+
+A section's nearest glTF scene can reference a cosmetic detail group in its root metadata:
+
+```json
+"extras": {"ORQWA_ultra_details": {"asset": "details-village-12", "range_m": 140}}
+```
+
+`asset` names an entry in `world.json`'s `assets`; its first `.glb` is the complete detail
+scene, with one node per small object. This asset is reserved for the detail group and is
+not placed in an `instances` file. It is therefore validated and read through the same
+bounded, offline part reader as other assets. `range_m` defaults to 120 m and must be finite
+and between 5 and 250 m. Unlisted assets, invalid ranges and duplicate ownership are ignored.
+
+Only the **Ultra preset** loads the group, around sections showing their nearest level.
+Each object's bounds have the given short visibility range and a final fade. Moving away,
+unloading its section or choosing a lighter preset frees the added geometry and textures;
+view-distance overrides do not enable it. Essential terrain, roads, safety barriers and
+landmarks belong in ordinary sections/assets. Older viewers ignore this optional metadata
+and show the ordinary world. This addition retains format 1.
+
 ## Routes
 
 ```json
@@ -206,9 +227,11 @@ rides at the line's elevation, a quarter of the road's `width` to the `drives_on
 - At least two points, and at least 100 m long. Consecutive points are distinct.
 - `surface` is `ground`, `bridge` or `tunnel`.
 - `width` is optional: the width of the road the rider is on, in metres (default 5).
-- ORQWA samples the line every 10 m, with straight lines between the samples, measuring
-  distance horizontally. **The road surface must lie on that line**: build the road from the
-  route's own points, sampled the same way, or riders float above or sink into it on crests.
+- ORQWA samples the line every 10 m, measuring distance horizontally. Elevations interpolate
+  straight between these samples; the horizontal position and heading follow the smooth
+  curve through them. **The road surface must lie on that line**: use the same elevation
+  sampling or riders float above or sink into it on crests. Avatar lane placement follows
+  the continuous curve too, without projecting it onto the width index's straight chords.
 
 ## Light
 

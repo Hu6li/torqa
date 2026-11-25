@@ -57,6 +57,9 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 
 - **[3D routes](https://github.com/ORQWA/ORQWA/wiki/Courses#import-a-course):** Import a GPX route
   and ride through scenery based on real terrain and OpenStreetMap.
+- **[Authored worlds](docs/world-files.md):** Ride complete offline scenery with its own
+  materials and light, continuous rider lanes through bends, and optional close scenery on Ultra.
+  Switch to another course in the same session; its starting surroundings load before riding.
 - **[Video rides](https://github.com/ORQWA/ORQWA/wiki/Video-courses):** Ride along with a video
   that plays at your speed.
 - **[Continue another day](https://github.com/ORQWA/ORQWA/wiki/Courses#continue-another-day):**

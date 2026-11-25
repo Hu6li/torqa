@@ -55,6 +55,12 @@ static func _prepare_authored(
 	world: RideWorld, orqwa: OrqwaApp, focus: Vector2, progress: Callable, requested: Callable
 ) -> bool:
 	var course: String = orqwa.loaded_course()
+	# The hidden world's frame loop still streams around its camera. After another ride that
+	# camera may be kilometres away, repeatedly evicting the entry this coroutine is loading.
+	var entry_camera: Vector3 = world._camera.global_position
+	entry_camera.x = focus.x
+	entry_camera.z = -focus.y
+	world._camera.global_position = entry_camera
 	while requested.call() and course == orqwa.loaded_course() and world._authored.active():
 		world._authored.update(Vector3(focus.x, 0.0, -focus.y), world.view_distance())
 		if world._authored.ready_around(focus):

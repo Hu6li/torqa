@@ -145,12 +145,42 @@ horizon by a fixed height created visible cliffs at the covered area's edge; dra
 same water footprint in terrain and water meshes also caused depth fighting. Authors must
 give land and water separate footprints with matching shoreline heights. The format stays
 version 1; the optional metadata requires the updated viewer to switch backgrounds.
-**Amendment (2026-11-24, R292–R295, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
+
+**Amendment (2026-11-24, R292).** A nearest section scene may name an optional close-detail
+asset through root `extras.ORQWA_ultra_details`. The asset list in `world.json` bounds and
+validates its file, avoiding a second unvalidated resource path or a world-format change.
+The viewer imports this asset as a scene containing small objects, rather than an instanced
+model. Only Ultra requests it. The section's normal content remains independent, and the
+viewer releases the optional scene when it leaves close range or the preset changes.
+Per-object visibility ranges with fades avoid a whole section's clutter switching at once.
+Older viewers ignore the metadata. Authored and generated world storage layouts do not change.
+
+**Amendment (2026-11-24, R293).** An authored road already uses its route as its middle.
+Its spatial width index must supply width without projecting the rider back onto that
+index's straight spans. Reprojection pulled the smooth position sideways in tight bends
+and changed its progress along the lane. Generated roads still use their fitted carriageway
+correction. This fixes avatar and ghost placement without changing the route, its key,
+physics, elevation or stored data; existing worlds need no regeneration for the motion fix.
+
+**Amendment (2026-11-25, R294).** Preparing a new authored ride moves the hidden camera's
+horizontal position to the requested entry. Otherwise the ordinary frame loop can stream
+around the previous ride's camera while preparation streams around the entry, repeatedly
+evicting each other's scenes and preventing the second ride from starting. The normal camera
+pose is set when riding starts. Scene parsing runs through a static worker callable with an
+explicit mailbox and mutex. Both replacing the world and leaving the tree join every pending
+task and free its unattached results before the owner can be destroyed. Active children follow
+Node's normal teardown order. Closing the window or exiting for an update first cancels
+preparation and stops streaming, then keeps processing frames until parsing finishes. A join
+inside engine teardown can deadlock pending scene work. The final tree
+exit therefore has no pending authored workers to join. The world file and the stored-world
+format stay unchanged.
+
+**Amendment (2026-11-24, R295–R298, [ADR 0043](0043-signed-licensed-worlds.md)).** Format 1
 gains `manifest.json` and `signature.json`. ORQWA opens only world files signed by the
 maintainers. Sold worlds are downloads under their own licence, usable on all of the buyer's
 devices, with no activation. Stage 3's editor stays with the maintainers.
 
-**Amendment (2026-11-24, R296).** `world.json` gains glTF's extension rules:
+**Amendment (2026-11-24, R299).** `world.json` gains glTF's extension rules:
 `extensions_used`, `extensions_required` and `extensions`. An ORQWA that does not know an
 optional extension ignores it; one that does not know a required extension asks for an update.
 New features for worlds (lights, sound, moving parts, themed worlds' needs) come as extensions,

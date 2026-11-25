@@ -22,6 +22,7 @@ var _pending_update: Array = []
 ## On Android: the ride's HUD shows in a small window on top of other apps.
 var _picture_in_picture: bool = false
 var _clear_color: Color = Color()
+var _quitting: bool = false
 
 @onready var _orqwa: OrqwaApp = $Orqwa
 @onready var _world: RideWorld = $World
@@ -96,9 +97,12 @@ func _ready() -> void:
 		get_window().mode = Window.MODE_FULLSCREEN
 	add_child(_update)
 	_update.bind(_orqwa)
+	_update.quit_requested.connect(_quit_when_ready)
 	add_child(_fallback_consent)
 	_fallback_consent.bind(_orqwa)
 	_orqwa.update_available.connect(_on_update_available)
+	# Workers creating scenes may need the rendering loop before they can be joined.
+	get_tree().auto_accept_quit = false
 	# Released builds look for a newer one unless this computer turned it off (R99); builds
 	# from the editor and the checks never contact GitHub on their own.
 	if not OS.is_debug_build():
@@ -267,6 +271,19 @@ func _notification(what: int) -> void:
 	else:
 		# Full screen may also have been turned on or off by the system (macOS's green button).
 		_orqwa.set_fullscreen(FullScreen.is_on(get_window()))
+	_quit_when_ready()
+
+
+func _quit_when_ready() -> void:
+	if _quitting:
+		return
+	_quitting = true
+	_start.call("_cancel_preparation")
+	_world.set_process(false)
+	# Let cancelled preparation coroutines unwind before the tree and GDScript shut down.
+	await get_tree().process_frame
+	await _world._authored.finish_pending()
+	get_tree().quit()
 
 
 ## The quick summary stays over the finished ride, like the ride settings (R113).

@@ -1,4 +1,4 @@
-//! Signed world files (ADR 0043, R292–R295).
+//! Signed world files (ADR 0043, R295–R298).
 //!
 //! ORQWA opens only world files the maintainers signed; sold ones are bought as downloads and
 //! work on all of the buyer's own devices, with no activation and no server. Everything comes
