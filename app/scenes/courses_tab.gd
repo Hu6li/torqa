@@ -113,6 +113,9 @@ var _pending: String = ""
 ## What the running import is: "" none, "gpx" a route or "video" a video course being
 ## prepared, "oqc" a course file, "probe" a video being looked at.
 var _importing: String = ""
+## The course or world file being imported, removed once the core has copied it (see
+## [method PickedFile.forget]).
+var _imported_file: String = ""
 
 
 func bind(orqwa: OrqwaApp) -> void:
@@ -730,6 +733,7 @@ func _on_file_selected(picked: String) -> void:
 	if extension == "oqx":
 		# A world's routes keep their author's names (R282): nothing to name.
 		_importing = "oqc"
+		_imported_file = path
 		_orqwa.import_course(path)
 		return
 	if not extension in ["oqc", "gpx", "xml", "rlv"]:
@@ -777,6 +781,7 @@ func _import(replace: bool) -> void:
 	match path.get_extension().to_lower():
 		"oqc":
 			_importing = "oqc"
+			_imported_file = path
 			_orqwa.import_course(path)
 		"gpx":
 			_start_loading("gpx", path)
@@ -828,6 +833,7 @@ func _cancel_loading() -> void:
 func _on_course_added(path: String) -> void:
 	var importing: String = _importing
 	_importing = ""
+	_forget_imported_file()
 	_loading.hide()
 	_import_button.disabled = false
 	# The course's map picture for its card (#192), from the map loaded with it (#203).
@@ -851,7 +857,13 @@ func _on_failed(message: String) -> void:
 	if _importing.is_empty():
 		return
 	_importing = ""
+	_forget_imported_file()
 	_loading.hide()
 	_import_button.disabled = false
 	_status.text = message
 	_status.show()
+
+
+func _forget_imported_file() -> void:
+	PickedFile.forget(_imported_file)
+	_imported_file = ""
