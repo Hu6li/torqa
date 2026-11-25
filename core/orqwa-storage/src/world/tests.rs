@@ -457,6 +457,14 @@ fn repeated_images_are_stored_once_when_a_world_is_packed() {
         Shared::default(),
         "nothing more to share"
     );
+    // A builder writing world.json anew, its sections as they were: the list comes back.
+    std::fs::write(
+        folder.join(DESCRIPTION),
+        serde_json::to_vec(&super::tests::description()).unwrap(),
+    )
+    .unwrap();
+    share_textures(&folder).unwrap();
+    pack(&folder, &world).expect("the textures the files name are listed again");
     std::fs::remove_file(world).unwrap();
     std::fs::remove_dir_all(folder).unwrap();
 }

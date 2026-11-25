@@ -29,7 +29,8 @@ type Key = (u64, usize);
 /// Moves every image that two or more of the world's glTF files in `folder` embed into a file
 /// of its own under `textures/`, names it there by `uri` instead, and lists it in the folder's
 /// `world.json`. An image only one file holds stays in it. Run on a world's folder before
-/// packing it; run again, it finds nothing more to share.
+/// packing it; run again, it finds nothing more to share, but lists again the textures files
+/// already name, for a `world.json` written anew since.
 ///
 /// # Errors
 /// [`WorldError`] if `world.json` or a glTF file it names cannot be read or written, or breaks
@@ -51,10 +52,23 @@ pub fn share_textures(folder: &Path) -> Result<Shared, WorldError> {
         }
     }
     let mut shared = Shared::default();
-    let mut listed: BTreeSet<String> = description.textures.iter().cloned().collect();
+    let before: BTreeSet<String> = description.textures.iter().cloned().collect();
+    let mut listed = before.clone();
     for name in &glbs {
         let path = folder.join(name);
         let (mut gltf, bin) = read_glb(&path)?;
+        for uri in gltf["images"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|i| i["uri"].as_str())
+        {
+            if let Some(entry) = super::resolve(name, uri)
+                && folder.join(&entry).is_file()
+            {
+                listed.insert(entry);
+            }
+        }
         let mut moved = BTreeMap::new();
         for image in embedded(&gltf, &bin) {
             if users.get(&image.key).map_or(0, BTreeSet::len) < 2 {
@@ -84,7 +98,7 @@ pub fn share_textures(folder: &Path) -> Result<Shared, WorldError> {
         shared.files += 1;
         write_glb(&path, &gltf, &smaller)?;
     }
-    if shared.files > 0 {
+    if listed != before {
         let mut description: Value = serde_json::from_slice(&std::fs::read(&description_path)?)
             .map_err(|e| invalid(format!("{DESCRIPTION}: {e}")))?;
         description["textures"] = listed.into_iter().map(Value::String).collect();
