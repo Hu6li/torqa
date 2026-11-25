@@ -95,20 +95,10 @@ for devices, courses, workouts and more.
 
 ## Support ORQWA
 
-ORQWA is free and open source, built in spare time. There is no subscription, no account and no
-ads. If it has become part of your training, you can help it grow:
-
-- [GitHub Sponsors](https://github.com/sponsors/ORQWA): a monthly amount you choose, or a
-  one-time gift. Steady support helps plan new features.
-- Buy Me a Coffee: a quick thank-you after a good ride. Pay by card, no account needed.
+ORQWA is free and built in spare time. If you enjoy it, you can
+[sponsor it on GitHub](https://github.com/sponsors/ORQWA) or buy me a coffee:
 
 <a href="https://buymeacoffee.com/boss.m8"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
-
-Free ways to help: star the repository, [report a bug](https://github.com/ORQWA/ORQWA/issues)
-with the trainer you use, or tell your club about ORQWA.
-
-The money pays for signing certificates and developer accounts, so Windows and macOS stop
-warning when you install ORQWA, and for new worlds, time, and coffee.
 
 ## Contributing
 
