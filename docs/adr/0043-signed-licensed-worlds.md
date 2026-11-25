@@ -139,8 +139,8 @@ Every rider can try a world without buying one: a **demo world**, signed by the 
   project's website and release pages link to it; the rider downloads it and imports it like
   any world file. The small sample course (R95) stays built in for riding offline at once.
 - A newer demo replaces the old one on import, by world id; rides on it are kept.
-- **Openly licensed.** Published by ORQWA's project, it carries a licence that allows
-  redistribution (R47) and must hold nothing that is sold. The demo is the Twann – Chasseral
+- **Free to share** *(amended 2026-11-25, see below)*. Published by ORQWA's project, it may be
+  downloaded and shared unmodified free of charge; all other rights are reserved. The demo is the Twann – Chasseral
   world; paid worlds are other worlds.
 
 ### Video courses (later stage)
@@ -165,3 +165,14 @@ it from inside the archive needs a custom input in `orqwa-video` and an amendmen
   new root. Worlds already sold keep working.
 - Device activation (encryption, an activation server, a 5-device limit) was built in #672
   and removed before merging; its history stays in the repository if it is ever needed.
+
+## Amendment 2026-11-25: the demo world is free to share, not openly licensed
+
+The demo was to be openly licensed and hold nothing that is sold. Its models and textures are
+the same ones paid worlds use, so an open licence such as CC BY would let anyone extract and
+resell them. Instead the demo's licence reserves all rights except one: anyone may download
+it and share unmodified copies free of charge. Selling it, changing it or extracting its
+contents is not allowed. The data sources it is made from (swisstopo, the canton of Bern's
+cadastral survey, the building register) allow this with their credits, which the world
+carries in `attribution`. R47 governs the GPL project's own assets, not world files, and is
+not affected. Riders still get it from the website and release pages, as before.
