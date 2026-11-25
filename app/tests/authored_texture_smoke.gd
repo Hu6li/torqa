@@ -44,9 +44,68 @@ func _run() -> void:
 		AuthoredWorld.QUALITY["ultra"] == Vector2i(100, 0),
 		"Ultra shows the world as its author made it: full reach, textures at their own size"
 	)
+	_check_shared_by_uri()
 	if not _failed:
 		print("AUTHORED TEXTURE SMOKE TEST PASSED")
 	quit(1 if _failed else 0)
+
+
+## A world stores an image once (`textures/`) for its sections to name by `uri`: each section
+## draws the one texture decoded from it.
+func _check_shared_by_uri() -> void:
+	AuthoredMaterials.texture_cap = 256
+	var glb: PackedByteArray = _naming_shared(
+		_section_with_image(Color(0.2, 0.6, 0.3)), "../../textures/wall.png"
+	)
+	var shared: Dictionary[int, String] = AuthoredTextures.shared("sections/0/lod0.glb", glb)
+	_check(shared == {0: "textures/wall.png"}, "a section names its shared image: %s" % shared)
+	var made: Dictionary[String, Texture2D] = {}
+	var wall: Image = Image.create(1024, 1024, false, Image.FORMAT_RGBA8)
+	wall.fill(Color(0.7, 0.5, 0.4))
+	AuthoredTextures._decode("textures/wall.png", wall.save_png_to_buffer(), made, Mutex.new())
+	var texture: Texture2D = made.get("textures/wall.png")
+	_check(
+		texture != null and texture.get_width() == 256 and texture.get_image().has_mipmaps(),
+		"a shared image is decoded once, within the preset's size, with mipmaps"
+	)
+	var provided: Dictionary[int, Texture2D] = {0: texture}
+	var first: Texture2D = _albedo(glb, provided)
+	var second: Texture2D = _albedo(glb, provided)
+	_check(first == texture and second == texture, "every section draws that one texture")
+	# One the core could not give, or Godot not read, leaves its sections without it.
+	var without: Dictionary[int, Texture2D] = {0: null}
+	_check(_albedo(glb, without) != null, "and its sections are drawn all the same")
+	var leaves: Texture2D = ImageTexture.create_from_image(wall)
+	(leaves as ImageTexture).get_image().generate_mipmaps()
+	var cutouts: Array[Array] = [[leaves, 0.5], [leaves, 0.5]]
+	AuthoredMaterials.finish_cutouts(cutouts)
+	_check(
+		leaves.has_meta(AuthoredMaterials.CUTOUT_FINISHED) and leaves.get_image().has_mipmaps(),
+		"a shared cut-out gets mipmaps keeping its cover, once"
+	)
+	AuthoredMaterials.texture_cap = 0
+	AuthoredMaterials.forget_shared()
+
+
+## `glb` with its one image named by `uri` instead of stored in it, as a world's section
+## sharing it does.
+func _naming_shared(glb: PackedByteArray, uri: String) -> PackedByteArray:
+	var gltf: Dictionary = AuthoredMaterials.glb_json(glb)
+	gltf["images"] = [{"uri": uri}]
+	var json: PackedByteArray = JSON.stringify(gltf, "", false, true).to_utf8_buffer()
+	while json.size() % 4 != 0:
+		json.append(0x20)
+	var rest: PackedByteArray = glb.slice(20 + glb.decode_u32(12))
+	var out: PackedByteArray = PackedByteArray()
+	out.resize(20)
+	out.encode_u32(0, AuthoredMaterials.GLB_MAGIC)
+	out.encode_u32(4, 2)
+	out.encode_u32(8, 20 + json.size() + rest.size())
+	out.encode_u32(12, json.size())
+	out.encode_u32(16, AuthoredMaterials.JSON_CHUNK)
+	out.append_array(json)
+	out.append_array(rest)
+	return out
 
 
 ## A section's file: one quad with a texture of `size`.
@@ -70,10 +129,11 @@ func _section_with_image(colour: Color, size: Vector2i = Vector2i(1024, 512)) ->
 	return bytes
 
 
-## The albedo texture of the scene made from `glb` as a world's section is.
-func _albedo(glb: PackedByteArray) -> Texture2D:
+## The albedo texture of the scene made from `glb` as a world's section is, with the world's
+## shared textures `provided`.
+func _albedo(glb: PackedByteArray, provided: Dictionary[int, Texture2D] = {}) -> Texture2D:
 	var made: Dictionary[String, Node3D] = {}
-	AuthoredWorld._make_scene("section.glb", glb, made, Mutex.new())
+	AuthoredWorld._make_scene("section.glb", glb, made, Mutex.new(), provided)
 	var scene: Node3D = made.get("section.glb")
 	if scene == null:
 		return null

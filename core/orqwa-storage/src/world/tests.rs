@@ -260,9 +260,9 @@ fn gltf_is_self_contained_static_and_within_its_extensions() {
     refused(
         &with(
             lod,
-            glb(|g| g["images"][0]["uri"] = json!("https://example.com/a.png")),
+            glb(|g| g["images"][0] = json!({"uri": "https://example.com/a.png"})),
         ),
-        "inside the file",
+        "not a relative path",
     );
     refused(
         &with(
@@ -305,6 +305,160 @@ fn gltf_is_self_contained_static_and_within_its_extensions() {
     let mut cut = glb(|_| {});
     cut.truncate(cut.len() - 4);
     refused(&with(lod, cut), "stated length");
+}
+
+/// A world whose sections draw one image stored once, under `textures/`.
+fn sharing(uri: &str) -> Vec<(String, Vec<u8>)> {
+    let shared = glb(|g| g["images"][0] = json!({"uri": uri}));
+    let mut entries = with_description(|d| d["textures"] = json!(["textures/wall.png"]));
+    for lod in ["sections/0/lod0.glb", "sections/0/lod1.glb"] {
+        entries.retain(|(name, _)| name != lod);
+        entries.push((lod.into(), shared.clone()));
+    }
+    entries.push((
+        "textures/wall.png".into(),
+        b"\x89PNG\r\n\x1a\nwall".to_vec(),
+    ));
+    entries
+}
+
+#[test]
+fn sections_share_images_stored_once_in_the_world() {
+    let path = archive(&sharing("../../textures/wall.png"));
+    validate(&path).expect("a shared image is part of the world");
+    let world = WorldFile::open(&path).unwrap();
+    assert!(world.glb("sections/0/lod0.glb").is_ok());
+    assert!(world.image("textures/wall.png").is_ok());
+    drop(world);
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(
+        resolve("sections/0/lod0.glb", "../../textures/wall.png").as_deref(),
+        Some("textures/wall.png")
+    );
+    assert_eq!(
+        resolve("horizon.glb", "./textures/wall.png").as_deref(),
+        Some("textures/wall.png")
+    );
+}
+
+#[test]
+fn a_shared_image_is_one_the_world_lists_and_stores() {
+    refused(
+        &sharing("../../textures/roof.png"),
+        "not one of world.json's textures",
+    );
+    refused(
+        &sharing("../textures/wall.png"),
+        "not one of world.json's textures",
+    );
+    refused(
+        &sharing("../../../textures/wall.png"),
+        "not one of world.json's textures",
+    );
+    for unsafe_uri in [
+        "/textures/wall.png",
+        "file:wall.png",
+        "wall%20a.png",
+        "../../textures//wall.png",
+    ] {
+        refused(&sharing(unsafe_uri), "not a relative path");
+    }
+    let mut missing = sharing("../../textures/wall.png");
+    missing.retain(|(name, _)| name != "textures/wall.png");
+    refused(&missing, "missing");
+    let mut not_an_image = sharing("../../textures/wall.png");
+    not_an_image.last_mut().unwrap().1 = b"text".to_vec();
+    refused(&not_an_image, "not a PNG, JPEG or WebP");
+    refused(
+        &with_description(|d| d["textures"] = json!(["textures/wall.gif"])),
+        "not PNG, JPEG or WebP",
+    );
+    refused(
+        &with_description(|d| d["textures"] = json!(["sections/0/lod0.glb"])),
+        "not PNG, JPEG or WebP",
+    );
+    refused(
+        &with(
+            "sections/0/lod0.glb",
+            glb(|g| g["images"][0] = json!({"uri": "../../textures/wall.png", "bufferView": 1})),
+        ),
+        "in the file or named by one uri",
+    );
+}
+
+/// A world's folder whose two sections embed the same image and one an image of its own.
+fn folder_with_repeated_images() -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let folder = std::env::temp_dir().join(format!(
+        "orqwa-world-folder-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    for (name, bytes) in entries() {
+        let path = folder.join(&name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+    let own = glb(|g| {
+        // A second image, held by this file only: other bytes than the shared one.
+        g["bufferViews"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"buffer": 0, "byteOffset": 0, "byteLength": 36}));
+        g["images"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({"bufferView": 2, "mimeType": "image/png"}));
+    });
+    std::fs::write(folder.join("sections/0/lod1.glb"), own).unwrap();
+    folder
+}
+
+#[test]
+fn repeated_images_are_stored_once_when_a_world_is_packed() {
+    let folder = folder_with_repeated_images();
+    let before = std::fs::read(folder.join("sections/0/lod0.glb")).unwrap();
+    let shared = share_textures(&folder).unwrap();
+    assert_eq!(shared.textures, 1, "{shared:?}");
+    assert_eq!(shared.files, 3, "both levels of the section and the tree");
+    assert!(shared.bytes_saved > 0);
+    let description: Value =
+        serde_json::from_slice(&std::fs::read(folder.join(DESCRIPTION)).unwrap()).unwrap();
+    let textures = description["textures"].as_array().unwrap();
+    assert_eq!(textures.len(), 1);
+    let texture = textures[0].as_str().unwrap();
+    assert!(texture.starts_with("textures/") && texture.to_ascii_lowercase().ends_with(".png"));
+    let after = std::fs::read(folder.join("sections/0/lod0.glb")).unwrap();
+    assert!(after.len() < before.len());
+    let checked = glb::check_stream(&mut after.as_slice(), after.len() as u64).unwrap();
+    assert_eq!(checked.shared, [format!("../../{texture}")]);
+    // The geometry still reads the same bytes, its view packed again before the image left.
+    let gltf_of = |bytes: &[u8]| -> Value {
+        let length = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+        serde_json::from_slice(&bytes[20..20 + length]).unwrap()
+    };
+    let json_end =
+        |bytes: &[u8]| 20 + u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    let positions = |bytes: &[u8]| bytes[json_end(bytes) + 8..json_end(bytes) + 8 + 36].to_vec();
+    assert_eq!(positions(&after), positions(&before));
+    assert_eq!(gltf_of(&after)["bufferViews"].as_array().unwrap().len(), 1);
+    let own = std::fs::read(folder.join("sections/0/lod1.glb")).unwrap();
+    let own = gltf_of(&own);
+    assert_eq!(
+        own["images"][1]["bufferView"],
+        json!(1),
+        "an image of one file stays in it"
+    );
+    assert_eq!(own["bufferViews"].as_array().unwrap().len(), 2);
+    let world = folder.with_extension("oqx");
+    pack(&folder, &world).expect("a shared world passes its checks");
+    assert_eq!(
+        share_textures(&folder).unwrap(),
+        Shared::default(),
+        "nothing more to share"
+    );
+    std::fs::remove_file(world).unwrap();
+    std::fs::remove_dir_all(folder).unwrap();
 }
 
 #[test]

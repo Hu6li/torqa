@@ -531,9 +531,12 @@ export cannot write; tools building worlds can use it too.
 
 ```sh
 scripts/art.sh blender --background --factory-startup --python art/worlds/test_world.py
-scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-pack \
-    ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
+scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-share ../art/worlds/build/test-loop \
+    && cargo run -q -p orqwa-cli -- world-pack ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
 ```
+
+`world-share` stores the images both sections repeat once, under `textures/`, as a world's
+builder should (docs/world-files.md, Shared textures), so the app's tests read them that way.
 
 The road is built from the route's own points, so the rider rides on it, not above or in it
 (docs/world-files.md, Routes). The unpacked world in `worlds/build/` is not committed.

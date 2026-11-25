@@ -106,6 +106,12 @@ enum Command {
         /// The world file to write.
         out: PathBuf,
     },
+    /// Store the images several of a world folder's glTF files embed once, under `textures/`,
+    /// for those files to name: run on the folder before packing it.
+    WorldShare {
+        /// The folder holding the world's `world.json`.
+        folder: PathBuf,
+    },
     /// Show the steps of a workout file (ZWO, ERG, MRC, FIT) or built-in workout.
     Workout {
         /// Workout file, or `builtin:<name>`; `builtins` lists the built-in workouts.
@@ -270,6 +276,17 @@ async fn main() -> Result<()> {
             orqwa_storage::world::pack(&folder, &out)
                 .with_context(|| format!("cannot pack {}", folder.display()))?;
             world_check(&out)
+        }
+        Command::WorldShare { folder } => {
+            let shared = orqwa_storage::world::share_textures(&folder)
+                .with_context(|| format!("cannot share {}'s textures", folder.display()))?;
+            println!(
+                "{} textures shared by {} files, {} MB smaller",
+                shared.textures,
+                shared.files,
+                shared.bytes_saved / 1_000_000
+            );
+            Ok(())
         }
         Command::SampleRides(args) => sample_rides::write(&args),
     }

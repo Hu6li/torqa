@@ -3,9 +3,10 @@ climbing 3 % through rolling meadows, over a bridge across a creek, past a textu
 trees placed as instances, in two sections of two levels of detail each, with a far horizon and
 its own afternoon light. Everything is made here, so the world is CC0 like the script.
 
-Run in the art container, then pack it in the dev container:
+Run in the art container, then share its repeated images and pack it in the dev container:
     scripts/art.sh blender --background --factory-startup --python art/worlds/test_world.py
-    scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-pack \\
+    scripts/dev.sh sh -c 'cd core && cargo run -q -p orqwa-cli -- world-share \\
+        ../art/worlds/build/test-loop && cargo run -q -p orqwa-cli -- world-pack \\
         ../art/worlds/build/test-loop fixtures/worlds/test-loop.oqx'
 
 Blender's axes are east (+x), north (+y) and up (+z); its glTF export turns them into the

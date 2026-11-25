@@ -10,6 +10,11 @@ const DIFFUSE_MATERIAL: String = "ORQWA_diffuse"
 const MAX_LAYERS: int = 8
 ## A layer's average colour is never darker than this, so a dark layer cannot blow up the base.
 const DARKEST_MEAN: float = 0.02
+## Set on a cut-out texture once its mipmaps keep its cover: a shared one is finished once.
+const CUTOUT_FINISHED: StringName = &"orqwa_cutout_finished"
+const GLB_MAGIC: int = 0x46546C67
+const JSON_CHUNK: int = 0x4E4F534A
+const BIN_CHUNK: int = 0x004E4942
 
 ## Textures are halved until they hold no more pixels than a square this wide (0: as the
 ## author made them), set by the graphics preset. A world's sections carry their textures at
@@ -27,9 +32,11 @@ static var _shared_lock: Mutex = Mutex.new()
 
 ## Gives the textures of `state` mipmaps, so distant ground and façades do not shimmer, at
 ## most [member texture_cap] in size, and the same texture to every section carrying the same
-## image; returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]`
-## pairs without, for `finish_cutouts` on the main thread.
-static func prepare(state: GLTFState) -> Array[Array]:
+## image; `provided` are the world's shared textures, by image index, standing in for the
+## placeholders [method with_placeholders] put there (null: one that could not be read).
+## Returns the cut-out ones (leaves, needles: `alphaMode` MASK) as `[texture, cutoff]` pairs,
+## for `finish_cutouts` on the main thread.
+static func prepare(state: GLTFState, provided: Dictionary[int, Texture2D] = {}) -> Array[Array]:
 	_diffuse_materials(state)
 	var cutoffs: Dictionary[int, float] = _cutout_images(state)
 	var cutouts: Array[Array] = []
@@ -38,6 +45,14 @@ static func prepare(state: GLTFState) -> Array[Array]:
 	for index: int in images.size():
 		var image_texture: ImageTexture = images[index] as ImageTexture
 		if image_texture == null:
+			continue
+		if provided.has(index):
+			var given: Texture2D = provided[index]
+			if given != null:
+				replaced[image_texture] = given
+				images[index] = given
+				if cutoffs.has(index):
+					cutouts.append([given, cutoffs[index]])
 			continue
 		var key: String = _image_key(state, index)
 		var shared: ImageTexture = _shared_texture(key)
@@ -51,7 +66,7 @@ static func prepare(state: GLTFState) -> Array[Array]:
 		var image: Image = image_texture.get_image()
 		if image == null or image.has_mipmaps() or image.is_compressed():
 			continue
-		_cap(image)
+		cap(image)
 		if cutoffs.has(index):
 			image_texture.set_image(image)
 			cutouts.append([image_texture, cutoffs[index]])
@@ -70,6 +85,70 @@ static func prepare(state: GLTFState) -> Array[Array]:
 	return cutouts
 
 
+## The JSON of a `.glb`; empty if `bytes` is not one.
+static func glb_json(bytes: PackedByteArray) -> Dictionary:
+	if bytes.size() < 20 or bytes.decode_u32(0) != GLB_MAGIC or bytes.decode_u32(16) != JSON_CHUNK:
+		return {}
+	var length: int = bytes.decode_u32(12)
+	if 20 + length > bytes.size():
+		return {}
+	var parsed: Variant = JSON.parse_string(bytes.slice(20, 20 + length).get_string_from_utf8())
+	return parsed if parsed is Dictionary else {}
+
+
+## `bytes`, a `.glb`, with the images at `indices`, shared by `uri`, replaced by a pixel stored
+## in the file: Godot reads glTF from memory only with every image inside it. [method prepare]
+## puts the shared textures in their place.
+static func with_placeholders(bytes: PackedByteArray, indices: Array[int]) -> PackedByteArray:
+	var gltf: Dictionary = glb_json(bytes)
+	if gltf.is_empty() or indices.is_empty():
+		return bytes
+	var json_length: int = bytes.decode_u32(12)
+	var bin: PackedByteArray = PackedByteArray()
+	if bytes.size() >= 28 + json_length and bytes.decode_u32(24 + json_length) == BIN_CHUNK:
+		bin = bytes.slice(28 + json_length, 28 + json_length + bytes.decode_u32(20 + json_length))
+	while bin.size() % 4 != 0:
+		bin.append(0)
+	var pixel: PackedByteArray = _placeholder()
+	var views: Array = gltf.get_or_add("bufferViews", [])
+	views.append({"buffer": 0, "byteOffset": bin.size(), "byteLength": pixel.size()})
+	bin.append_array(pixel)
+	var buffers: Array = gltf.get_or_add("buffers", [])
+	if buffers.is_empty():
+		buffers.append({})
+	var buffer: Dictionary = buffers[0]
+	buffer["byteLength"] = bin.size()
+	while bin.size() % 4 != 0:
+		bin.append(0)
+	var images: Array = gltf["images"]
+	for index: int in indices:
+		images[index] = {"bufferView": views.size() - 1, "mimeType": "image/png"}
+	var json: PackedByteArray = JSON.stringify(gltf, "", false, true).to_utf8_buffer()
+	while json.size() % 4 != 0:
+		json.append(0x20)
+	var out: PackedByteArray = PackedByteArray()
+	out.resize(20)
+	out.encode_u32(0, GLB_MAGIC)
+	out.encode_u32(4, 2)
+	out.encode_u32(8, 20 + json.size() + 8 + bin.size())
+	out.encode_u32(12, json.size())
+	out.encode_u32(16, JSON_CHUNK)
+	out.append_array(json)
+	var header: PackedByteArray = PackedByteArray()
+	header.resize(8)
+	header.encode_u32(0, bin.size())
+	header.encode_u32(4, BIN_CHUNK)
+	out.append_array(header)
+	out.append_array(bin)
+	return out
+
+
+static func _placeholder() -> PackedByteArray:
+	var pixel: Image = Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	pixel.fill(Color.WHITE)
+	return pixel.save_png_to_buffer()
+
+
 ## Lets go of the textures kept for sharing: a world shown next starts afresh.
 static func forget_shared() -> void:
 	_shared_lock.lock()
@@ -77,7 +156,8 @@ static func forget_shared() -> void:
 	_shared_lock.unlock()
 
 
-static func _cap(image: Image) -> void:
+## Halves `image` until it holds no more pixels than [member texture_cap] allows.
+static func cap(image: Image) -> void:
 	while texture_cap > 0 and image.get_width() * image.get_height() > texture_cap * texture_cap:
 		image.shrink_x2()
 
@@ -176,10 +256,13 @@ static func finish_cutouts(cutouts: Array[Array]) -> void:
 	for cutout: Array in cutouts:
 		var texture: ImageTexture = cutout[0]
 		var cutoff: float = cutout[1]
-		var image: Image = texture.get_image()
 		# Shared by another section, which finished it already.
-		if image.has_mipmaps():
+		if texture.has_meta(CUTOUT_FINISHED):
 			continue
+		texture.set_meta(CUTOUT_FINISHED, true)
+		var image: Image = texture.get_image()
+		# A world's shared texture comes with ordinary mipmaps, made where it was decoded.
+		image.clear_mipmaps()
 		image.convert(Image.FORMAT_RGBA8)
 		var width: int = image.get_width()
 		var height: int = image.get_height()

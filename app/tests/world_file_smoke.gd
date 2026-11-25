@@ -86,6 +86,8 @@ func _opened(course: Dictionary) -> void:
 	await _wait_until(_trees_placed, "the trees are placed with their mesh")
 	var terrain: bool = false
 	var mipmapped: bool = false
+	# The fixture's images are the world's shared textures: none stays the stand-in pixel.
+	var stand_in: bool = false
 	for node: Node in _world._authored.find_children("*", "MeshInstance3D", true, false):
 		var mesh: Mesh = (node as MeshInstance3D).mesh
 		for surface: int in mesh.get_surface_count():
@@ -102,7 +104,10 @@ func _opened(course: Dictionary) -> void:
 				var albedo: Texture2D = (material as StandardMaterial3D).albedo_texture
 				if albedo != null and albedo.get_image().has_mipmaps():
 					mipmapped = true
+				if albedo != null and albedo.get_width() == 1:
+					stand_in = true
 	_check(terrain, "the ground carries ORQWA's terrain layers")
+	_check(not stand_in, "every texture is the world's own image, read from its textures")
 	_check(mipmapped, "the author's textures have mipmaps")
 
 
