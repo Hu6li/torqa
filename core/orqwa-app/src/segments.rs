@@ -67,11 +67,12 @@ fn probe(segment: &Segment) -> SegmentTime {
     }
 }
 
-/// The fastest time on `segment` among `records`, which are on its route.
+/// The fastest time on `segment` among `records`, which are on its route; simulated and
+/// assisted rides keep their times but set no records.
 pub(crate) fn best_time(records: &[&RideRecord], segment: &SegmentTime) -> Option<Duration> {
     records
         .iter()
-        .filter(|r| !r.assisted)
+        .filter(|r| !r.assisted && !r.simulated)
         .flat_map(|r| r.segments.iter())
         .filter(|other| other.same_segment(segment))
         .map(|other| other.elapsed)
@@ -165,17 +166,17 @@ pub(crate) fn heralded(active: &mut ActiveRide) -> Vec<Moment> {
     moments
 }
 
-/// The times of a finished ride on the segments it rode from their start; none unless the
-/// ride `counts` for records.
+/// The times of a finished ride on the segments it rode from their start. A simulated or
+/// assisted ride keeps them too, for its summary, though [`best_time`] passes over them: a
+/// segment told of as the ride finished would otherwise leave no trace.
 pub(crate) fn times(
     records: &[SegmentBest],
     samples: &[Sample],
     entry: Meters,
-    counts: bool,
 ) -> Vec<SegmentTime> {
     records
         .iter()
-        .filter(|s| counts && s.segment.start_m >= entry.0)
+        .filter(|s| s.segment.start_m >= entry.0)
         .filter_map(|s| {
             let (start, end) = in_ride(&s.segment, entry);
             effort(samples, start, end).map(|e| SegmentTime {
@@ -462,6 +463,67 @@ mod tests {
         // …and no earlier than the panel shows it, even sped up.
         assert_eq!(call_distance(kmh(40.0), 20.0), HERALD);
         assert!((call_distance(kmh(30.0), 2.0).0 - 250.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_ride_sped_up_twentyfold_still_shows_times_and_tells_its_segments() {
+        use orqwa_devices::fake::FakeRider;
+        use orqwa_domain::units::{Percent, Rpm, Watts};
+        use orqwa_physics::DescentMode;
+
+        let (dir, mut app) = loaded("segments-sped-up");
+        app.add_segment("Sprint", Meters(400.0), Meters(700.0))
+            .unwrap();
+        app.connect_trainer(crate::TrainerChoice::Fake(FakeRider {
+            power: Watts(400.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        let mut events = Vec::new();
+        while !events.iter().any(|e| matches!(e, AppEvent::Connected(_))) {
+            std::thread::sleep(Duration::from_millis(16));
+            events.extend(app.update(Duration::from_millis(16)));
+        }
+        assert_eq!(app.set_time_scale(20.0), 20.0);
+        // Frames as the app draws them; at 20× a frame covers several metres.
+        let mut missing = Vec::new();
+        for _ in 0..20_000 {
+            events.extend(app.update(Duration::from_millis(16)));
+            if events.iter().any(|e| matches!(e, AppEvent::RideFinished)) {
+                break;
+            }
+            let at = app.ride_state().unwrap().distance.0;
+            if (400.0..700.0).contains(&at) && app.current_segment().is_none() {
+                missing.push(at);
+            }
+        }
+        let told = |kind: fn(&Moment) -> bool| {
+            events
+                .iter()
+                .filter(|e| matches!(e, AppEvent::Moment(m) if kind(m)))
+                .count()
+        };
+        assert_eq!(
+            missing,
+            Vec::<f64>::new(),
+            "the panel's segment while on it"
+        );
+        assert_eq!(told(|m| matches!(m, Moment::SegmentAhead { .. })), 1);
+        assert_eq!(
+            told(|m| matches!(m, Moment::SegmentDone { .. })),
+            1,
+            "{events:?}"
+        );
+        app.finish_ride();
+        // Its summary still shows the time, as no record: the card may go with the finish.
+        let history = app.history();
+        assert_eq!(history[0].record.segments.len(), 1);
+        assert_eq!(history[0].segment_records, [false]);
+        assert_eq!(app.segments()[0].best, None);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

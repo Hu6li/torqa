@@ -80,6 +80,29 @@ func _run() -> void:
 		"assisted rides are labelled and keep real power records"
 	)
 	record_ride["assisted"] = false
+	# Segment times (R300), as a card told at the finish may have gone with the ride screen.
+	record_ride["simulated"] = true
+	record_ride["segments"] = [
+		{"name": "Wabern sprint", "time_s": 41.0, "record": false},
+		{"name": "Gurten wall", "time_s": 125.0, "record": true},
+	]
+	summary.call("_show_ride", record_ride)
+	var segments: VBoxContainer = summary.get("_segments")
+	var rows: Array[String] = []
+	for row: Node in segments.get_children().slice(1):
+		rows.append("%s %s" % [(row.get_child(0) as Label).text, (row.get_child(1) as Label).text])
+	_check(
+		segments.visible and rows == ["Wabern sprint 0:41", "Gurten wall 2:05  ★"],
+		"the ride's segment times, its best starred: %s" % [rows]
+	)
+	_check(
+		summary._assisted.visible and summary._assisted.text == "Simulated ride · no records",
+		"simulated rides are labelled"
+	)
+	record_ride["simulated"] = false
+	record_ride["segments"] = []
+	summary.call("_show_ride", record_ride)
+	_check(not segments.visible and not summary._assisted.visible, "no segments, no label")
 	var five_seconds: Label = records.get_child(0)
 	var one_minute: Label = records.get_child(1)
 	_check(

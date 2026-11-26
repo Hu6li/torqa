@@ -887,10 +887,6 @@ msgstr ""
 msgid "Click: jump there · corner: close view / whole route"
 msgstr ""
 
-#: app/scenes/course_detail.gd
-msgid "Click: set the segment's start, then its end"
-msgstr ""
-
 #: core/orqwa-upload/src/strava.rs
 msgid "Client ID"
 msgstr ""
@@ -1485,6 +1481,10 @@ msgstr ""
 
 #: app/scenes/group_rides_tab.gd
 msgid "Drafting on"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Drag from the segment's start to its end, or click both"
 msgstr ""
 
 #: app/scenes/overlay_hud.gd
@@ -2856,7 +2856,7 @@ msgid "Optional sex for heart-rate calories. Separate from your avatar, and not 
 msgstr ""
 
 #: app/ui/segment_list.gd
-msgid "Or click the profile: first the start, then the end."
+msgid "Or drag across the profile from the start to the end, or click it twice."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd
@@ -3459,7 +3459,7 @@ msgstr ""
 msgid "Segment name"
 msgstr ""
 
-#: app/ui/segment_list.gd
+#: app/scenes/ride_summary_dialog.gd app/ui/segment_list.gd
 msgid "Segments"
 msgstr ""
 
@@ -3545,6 +3545,10 @@ msgstr ""
 
 #: app/ui/ride_bar.gd
 msgid "Show the controls"
+msgstr ""
+
+#: app/scenes/ride_summary_dialog.gd
+msgid "Simulated ride · no records"
 msgstr ""
 
 #: app/ui/ride_bar.gd

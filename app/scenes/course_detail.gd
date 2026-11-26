@@ -256,6 +256,7 @@ func _init() -> void:
 	_segments.changed.connect(_on_segments_changed)
 	_segments.picking_changed.connect(_on_segment_picking)
 	_profile.jump_requested.connect(_segments.pick)
+	_profile.stretch_picked.connect(_segments.pick_stretch)
 	left.add_child(_segments)
 	var left_scroll: ScrollContainer = UiTheme.scrolling(left)
 	left_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -516,11 +517,12 @@ func _on_segments_changed(segments: Array) -> void:
 	_path_card.set_segments(segments, frame)
 
 
-## While a segment is marked, a click on the profile sets its ends.
+## While a segment is marked, a drag across the profile or two clicks on it set its ends.
 func _on_segment_picking(picking: bool) -> void:
 	_profile.jumpable = picking
+	_profile.stretchable = picking
 	if picking:
-		_profile.tooltip_text = tr("Click: set the segment's start, then its end")
+		_profile.tooltip_text = tr("Drag from the segment's start to its end, or click both")
 
 
 func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:

@@ -2,7 +2,8 @@ class_name SegmentList
 extends VBoxContainer
 ## The rider's own segments of a course (R300) on its page: each with its length, where it
 ## starts and the rider's best time on it, renamed or moved with the pencil and removed with the
-## bin. A new one is marked by its start and end, typed in or clicked on the profile, or taken
+## bin. A new one is marked by its start and end, typed in, dragged across or clicked on the
+## profile, or taken
 ## from a GPX track of the stretch (one exported from a segment on a cycling site, say). Times
 ## stay with the rides: a segment removed and marked again at the same ends keeps its best.
 
@@ -69,6 +70,17 @@ func pick(distance_m: float) -> void:
 	_check()
 
 
+## A drag across the profile while marking: the stretch from `start_m` to `end_m` at once. The
+## next click sets the start again.
+func pick_stretch(start_m: float, end_m: float) -> void:
+	if not _form.visible:
+		return
+	_start.value = _from_meters(clampf(start_m, 0.0, _length_m))
+	_end.value = _from_meters(clampf(end_m, 0.0, _length_m))
+	_picks_end = false
+	_check()
+
+
 func _init() -> void:
 	add_theme_constant_override("separation", 8)
 	hide()
@@ -115,7 +127,7 @@ func _build_form() -> void:
 		ends.add_child(spin)
 	_form.add_child(ends)
 	var hint: Label = Label.new()
-	hint.text = tr("Or click the profile: first the start, then the end.")
+	hint.text = tr("Or drag across the profile from the start to the end, or click it twice.")
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", UiTheme.MUTED)

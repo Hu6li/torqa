@@ -1229,8 +1229,9 @@ impl OrqwaApp {
     /// The active rider's rides, newest first: `[{path, route, name, start_unix_s, elapsed_s,
     /// distance_m, elevation_gain_m, avg_speed_kmh, avg_power, max_power, normalized_power,
     /// intensity_factor, training_stress, work_kj, avg_cadence, avg_heart_rate,
-    /// max_heart_rate, route_time_s, route_record, ftp_estimate_w, climbs, power_curve,
-    /// power_records, uploads}]`; values the ride did not record are `null`, and
+    /// max_heart_rate, route_time_s, route_record, assisted, simulated, ftp_estimate_w, climbs,
+    /// segments, power_curve, power_records, uploads}]`; values the ride did not record are
+    /// `null`, and
     /// `ftp_estimate_w` for all but FTP tests (R22). `power_curve` holds `(duration s, W)`
     /// points of the ride's best power, `power_records` the durations in seconds over which it
     /// is the rider's best (R62). `uploads` has the page of the ride's activity by platform id
@@ -1265,6 +1266,7 @@ impl OrqwaApp {
                     "route_time_s" => &optional(entry.record.route_time.map(|t| t.as_secs_f64())),
                     "route_record" => entry.route_record,
                     "assisted" => entry.record.assisted,
+                    "simulated" => entry.record.simulated,
                     "ftp_estimate_w" => &optional(entry.record.ftp_estimate.map(|w| w.0)),
                     "climbs" => &climb_times(&entry),
                     "segments" => &segment_times(&entry),

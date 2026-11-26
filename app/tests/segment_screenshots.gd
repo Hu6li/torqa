@@ -64,12 +64,24 @@ static func _course_page(main: Control, out: String) -> void:
 	var field: LineEdit = list.get("_name")
 	field.text = "Ligerz climb"
 	field.text_changed.emit(field.text)
-	list.pick(6000.0)
-	list.pick(8300.0)
+	# Dragged across the profile from 6.0 to 8.3 km (R302), still held for the picture.
 	var profile: ElevationProfile = page.get("_profile")
-	Input.warp_mouse(profile.get_global_rect().get_center())
+	var points: PackedVector2Array = profile.get("_profile")
+	var course_m: float = points[points.size() - 1].x
+	var press: InputEventMouseButton = InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = Vector2(6000.0 / course_m * profile.size.x, profile.size.y / 2.0)
+	profile.call("_gui_input", press)
+	var drag: InputEventMouseMotion = InputEventMouseMotion.new()
+	drag.position = Vector2(8300.0 / course_m * profile.size.x, press.position.y)
+	profile.call("_gui_input", drag)
+	Input.warp_mouse(profile.get_global_transform() * drag.position)
 	await tree.create_timer(1.2).timeout
 	_save(main, out, "course-marking")
+	press.pressed = false
+	press.position = drag.position
+	profile.call("_gui_input", press)
 	list.call("_close_form")
 	_forget_segments(app)
 	page.refresh_records()
@@ -120,6 +132,8 @@ static func _rides(main: Control, out: String) -> void:
 		app.finish_ride()
 		await tree.create_timer(1.0).timeout
 		var quick: RideSummaryDialog = main.get("_quick_summary")
+		# Its segment times, as the card may have gone with the finish (R302).
+		_save(main, out, name + "summary")
 		quick.custom_action.emit(&"details")
 		await tree.create_timer(1.0).timeout
 		var summary: HistoryScreen = main.get_node("HistoryScreen")

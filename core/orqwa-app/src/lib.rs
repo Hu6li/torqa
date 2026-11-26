@@ -3934,7 +3934,7 @@ impl App {
                     .and_then(|route| effort(samples, Meters(0.0), route.length()))
                     .map(|e| e.elapsed),
                 climbs: climb_times(route, samples, entry, counts),
-                segments: segments::times(&active.records.segments, samples, entry, counts),
+                segments: segments::times(&active.records.segments, samples, entry),
                 name: None,
                 ftp_estimate: active.ride.ftp_estimate(),
                 rider_mass: Some(self.profile.profile.rider_mass),
@@ -4034,6 +4034,7 @@ impl App {
                         .iter()
                         .map(|segment| {
                             !record.assisted
+                                && !record.simulated
                                 && Some(segment.elapsed)
                                     == segments::best_time(&same_route, segment)
                         })

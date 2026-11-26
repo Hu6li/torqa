@@ -253,6 +253,8 @@ Built in rideable steps:
     `SCREENSHOT_SEGMENTS_ONLY=1 scripts/screenshots.sh` renders them all
   - [x] A card with the chime about 15 s before a segment starts, at the rider's speed and
     between 500 m and 50 m ahead, showing the distance (R301)
+  - [x] Segments marked by dragging across the profile; the quick summary lists the ride's
+    segment times, which simulated and assisted rides keep without setting records (R302)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and

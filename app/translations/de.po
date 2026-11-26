@@ -2966,6 +2966,9 @@ msgstr "Gruppenfahrt mit Unterstützung"
 msgid "Assisted group ride · speed records excluded"
 msgstr "Gruppenfahrt mit Unterstützung · keine Geschwindigkeitsrekorde"
 
+msgid "Simulated ride · no records"
+msgstr "Simulierte Fahrt · keine Rekorde"
+
 msgid "Assisted rides count for training, but do not set speed records."
 msgstr "Fahrten mit Unterstützung zählen für dein Training, aber nicht für Geschwindigkeitsrekorde."
 
@@ -3505,8 +3508,8 @@ msgstr "Von"
 msgid "To"
 msgstr "Bis"
 
-msgid "Or click the profile: first the start, then the end."
-msgstr "Oder klicke ins Profil: zuerst auf den Start, dann auf das Ende."
+msgid "Or drag across the profile from the start to the end, or click it twice."
+msgstr "Oder ziehe im Profil vom Start bis zum Ende, oder klicke zweimal hinein."
 
 msgid "from %s"
 msgstr "ab %s"
@@ -3523,8 +3526,8 @@ msgstr "Segment entfernen; seine Zeiten bleiben bei den Fahrten"
 msgid "A segment is at least %s long."
 msgstr "Ein Segment ist mindestens %s lang."
 
-msgid "Click: set the segment's start, then its end"
-msgstr "Klicken: Start des Segments setzen, dann sein Ende"
+msgid "Drag from the segment's start to its end, or click both"
+msgstr "Vom Start des Segments bis zu seinem Ende ziehen oder beide anklicken"
 
 msgid "Segment  ·  %s"
 msgstr "Segment  ·  %s"

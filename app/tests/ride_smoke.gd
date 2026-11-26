@@ -485,6 +485,7 @@ func _segments() -> void:
 	list.pick(0.0)
 	list.pick(300.0)
 	_check(not save.disabled, "the profile's clicks set its ends")
+	_drag_on_profile(list)
 	save.pressed.emit()
 	var first: Dictionary = marked[0] if marked.size() == 1 else {}
 	var length: float = first.get("length_m", 0.0)
@@ -507,6 +508,63 @@ func _segments() -> void:
 	_failure = ""
 	_check(_orqwa.segments().size() == 1, "one segment: %s" % [_orqwa.segments()])
 	list.free()
+
+
+## A drag across the course page's profile marks the stretch, either way, following the
+## pointer; a press released where it went down stays a click (R300). Leaves 0–300 m marked.
+func _drag_on_profile(list: SegmentList) -> void:
+	var profile: ElevationProfile = ElevationProfile.new()
+	root.add_child(profile)
+	profile.size = Vector2(400.0, 60.0)
+	profile.set_profile(PackedVector2Array([Vector2(0.0, 500.0), Vector2(400.0, 520.0)]))
+	profile.jumpable = true
+	profile.stretchable = true
+	profile.jump_requested.connect(list.pick)
+	profile.stretch_picked.connect(list.pick_stretch)
+	_press(profile, 100.0, true)
+	_move(profile, 103.0)
+	_check(_ends(list).is_equal_approx(Vector2(0.0, 300.0)), "a twitch is no drag")
+	_move(profile, 200.0)
+	_check(_ends(list).is_equal_approx(Vector2(100.0, 200.0)), "the ends follow the drag")
+	_press(profile, 350.0, false)
+	_check(_ends(list).is_equal_approx(Vector2(100.0, 350.0)), "released: %s" % _ends(list))
+	_press(profile, 300.0, true)
+	_move(profile, 0.0)
+	_press(profile, 0.0, false)
+	_check(_ends(list).is_equal_approx(Vector2(0.0, 300.0)), "dragged back: %s" % _ends(list))
+	var clicked: Array[float] = []
+	profile.jump_requested.connect(func(at: float) -> void: clicked.append(at))
+	_press(profile, 200.0, true)
+	_check(clicked.is_empty(), "a click goes out once released")
+	_press(profile, 201.0, false)
+	_check(
+		clicked.size() == 1 and is_equal_approx(clicked[0], 200.0),
+		"a click on release: %s" % [clicked]
+	)
+	# The click was the start; put it back for the rest.
+	list.pick_stretch(0.0, 300.0)
+	profile.free()
+
+
+## The marked segment's ends in metres, as its form shows them.
+func _ends(list: SegmentList) -> Vector2:
+	var start: SpinBox = list.get("_start")
+	var end: SpinBox = list.get("_end")
+	return Vector2(start.value, end.value) * 1000.0
+
+
+func _press(profile: ElevationProfile, x: float, down: bool) -> void:
+	var button: InputEventMouseButton = InputEventMouseButton.new()
+	button.button_index = MOUSE_BUTTON_LEFT
+	button.pressed = down
+	button.position = Vector2(x, 30.0)
+	profile.call("_gui_input", button)
+
+
+func _move(profile: ElevationProfile, x: float) -> void:
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.position = Vector2(x, 30.0)
+	profile.call("_gui_input", motion)
 
 
 func _write_route(path: String) -> void:
