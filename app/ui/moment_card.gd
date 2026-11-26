@@ -18,8 +18,13 @@ const WIDTH: float = 460.0
 const SIDE: float = 24.0
 const PADDING: float = 16.0
 
-## What is still to show: `[figure, line, accent, heads_up]`.
+## What is still to show: `[figure, line, accent, heads_up, live]`.
 var _queue: Array[Array] = []
+## The card on screen's figure and line afresh each frame, if it counts down to something;
+## nothing once that is there.
+var _live: Callable = Callable()
+## Where the card on screen slides out to.
+var _above: float = 0.0
 var _figure: Label = UiTheme.value(36)
 var _line: Label = Label.new()
 var _tween: Tween
@@ -53,11 +58,19 @@ func _init() -> void:
 
 ## Shows `line` under `figure` (none if empty), in `accent`, after the cards before it. A
 ## `heads_up` of what is coming comes without particles, as nothing is achieved yet, and before
-## the achievements still waiting: late, it would no longer be true.
-func tell(figure: String, line: String, accent: Color = UiTheme.ACCENT, heads_up := false) -> void:
+## the achievements still waiting: late, it would no longer be true. While it shows, `live`
+## (if valid) gives its `[figure, line]` afresh each frame, so a distance counts down; an empty
+## array ends the card early, as what it told of has come.
+func tell(
+	figure: String,
+	line: String,
+	accent: Color = UiTheme.ACCENT,
+	heads_up := false,
+	live := Callable()
+) -> void:
 	if line.is_empty():
 		return
-	var card: Array = [figure, line, accent, heads_up]
+	var card: Array = [figure, line, accent, heads_up, live]
 	if heads_up:
 		var first: int = 0
 		for waiting: Array in _queue:
@@ -87,6 +100,7 @@ func current() -> PackedStringArray:
 ## Takes every card away at once, e.g. when the ride ends.
 func clear() -> void:
 	_queue.clear()
+	_live = Callable()
 	if _tween != null:
 		_tween.kill()
 		_tween = null
@@ -94,11 +108,25 @@ func clear() -> void:
 	hide()
 
 
+func _process(_delta: float) -> void:
+	if not _live.is_valid() or not is_showing():
+		return
+	var now: PackedStringArray = _live.call()
+	if now.size() < 2:
+		_live = Callable()
+		_leave()
+		return
+	_figure.text = now[0]
+	_line.text = now[1]
+
+
 func _next() -> void:
+	_live = Callable()
 	if _queue.is_empty():
 		hide()
 		return
 	var card: Array = _queue.pop_front()
+	_live = card[4]
 	var figure: String = card[0]
 	var line: String = card[1]
 	var accent: Color = card[2]
@@ -118,8 +146,8 @@ func _next() -> void:
 	custom_minimum_size.x = width
 	_line.custom_minimum_size.x = width - 2.0 * PADDING
 	reset_size()
-	var above: float = -size.y - 8.0
-	position = Vector2((get_parent_area_size().x - size.x) / 2.0, above)
+	_above = -size.y - 8.0
+	position = Vector2((get_parent_area_size().x - size.x) / 2.0, _above)
 	modulate.a = 0.0
 	show()
 	shown.emit(line if figure.is_empty() else "%s  ·  %s" % [figure, line])
@@ -134,7 +162,17 @@ func _next() -> void:
 	_tween.parallel().tween_property(self, "modulate:a", 1.0, SLIDE_SECONDS)
 	_tween.tween_interval(SHOW_SECONDS)
 	_tween.set_ease(Tween.EASE_IN)
-	_tween.tween_property(self, "position:y", above, SLIDE_SECONDS)
+	_tween.tween_property(self, "position:y", _above, SLIDE_SECONDS)
+	_tween.parallel().tween_property(self, "modulate:a", 0.0, SLIDE_SECONDS)
+	_tween.finished.connect(_next)
+
+
+## Slides the card on screen out now rather than when its time is up.
+func _leave() -> void:
+	_tween.kill()
+	_tween = create_tween()
+	_tween.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+	_tween.tween_property(self, "position:y", _above, SLIDE_SECONDS)
 	_tween.parallel().tween_property(self, "modulate:a", 0.0, SLIDE_SECONDS)
 	_tween.finished.connect(_next)
 

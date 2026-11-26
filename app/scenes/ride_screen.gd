@@ -52,6 +52,8 @@ var _ghost_gap: Label = UiTheme.value(20)
 var _group_riders: GroupRidersPanel = GroupRidersPanel.new()
 var _assistance: GroupAssistance = GroupAssistance.new()
 var _finished: bool = false
+## How far along the route the rider is, as of this frame.
+var _position_m: float = 0.0
 var _saved: bool = false
 var _toast_left: float = 0.0
 ## The moments of the ride (R124).
@@ -322,6 +324,7 @@ func _process(delta: float) -> void:
 	_show_assistance(state)
 	if state.is_empty():
 		return
+	_position_m = state.get("position_m", _position_m)
 	var peers: Array = state.get("peers", [])
 	_group_riders.show_riders(peers, _imperial)
 	_minimap.set_group_riders(peers)
@@ -703,25 +706,45 @@ func _fit_navigation() -> void:
 ## Tells of a moment of the ride (R124) in the rider's voice; not at all with the voice off.
 func _on_moment(moment: Dictionary) -> void:
 	var voice: String = _orqwa.profile().get("voice", "casual")
-	var line: String = "" if voice == "off" else MomentLines.line(moment, voice, _imperial)
-	var figure: String = MomentLines.figure(moment, _imperial)
 	if moment.get("kind", "") == "segment_ahead":
-		# A heads-up in the segments' colour, with the chime but nothing to celebrate yet (R301).
-		_tell(figure, line, UiTheme.SEGMENT_COLOR, "", true)
-	else:
-		_tell(figure, line)
+		_tell_segment_ahead(moment, voice)
+		return
+	var line: String = "" if voice == "off" else MomentLines.line(moment, voice, _imperial)
+	_tell(MomentLines.figure(moment, _imperial), line)
+
+
+## A heads-up of a segment in its colour, with the chime but nothing to celebrate yet (R301):
+## its distance counts down while the card shows, and the card goes once the rider is there.
+func _tell_segment_ahead(moment: Dictionary, voice: String) -> void:
+	if voice == "off":
+		return
+	var told: float = moment["distance_m"]
+	# Where the rider is now: the frame's position may still be the last ride's.
+	var at: float = _orqwa.ride_state().get("position_m", _position_m)
+	var start_m: float = at + told
+	_position_m = at
+	var left: Callable = func() -> float: return start_m - _position_m
+	var live: Callable = MomentLines.countdown(moment, voice, _imperial, left)
+	var first: PackedStringArray = live.call()
+	if first.size() == 2:
+		_tell(first[0], first[1], UiTheme.SEGMENT_COLOR, "", true, live)
 
 
 ## On a card in `accent`, or as `bar` (else `line`) in the overlay's: a moment, connection
-## (R249) or `heads_up` of what is coming.
+## (R249) or `heads_up` of what is coming, counting down by `live` (see `MomentCard.tell`).
 func _tell(
-	figure: String, line: String, accent := UiTheme.ACCENT, bar := "", heads_up := false
+	figure: String,
+	line: String,
+	accent := UiTheme.ACCENT,
+	bar := "",
+	heads_up := false,
+	live := Callable()
 ) -> void:
 	if visible and not _finished and not line.is_empty() and is_overlay():
 		_overlay_hud.tell(line if bar.is_empty() else bar)
 		_play_chime()
 	elif visible and not _finished:
-		_moment_card.tell(figure, line, accent, heads_up)
+		_moment_card.tell(figure, line, accent, heads_up, live)
 
 
 func _build_group_window() -> void:

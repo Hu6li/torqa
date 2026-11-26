@@ -207,6 +207,21 @@ static func distance(meters: float, imperial: bool) -> String:
 	return "%.1f %s" % [rounded, unit]
 
 
+## A heads-up's `[figure, line]` afresh for `MomentCard.tell`, with `left` the metres to go
+## now; none once there. It keeps one line for the whole countdown, not a new one each frame.
+static func countdown(
+	moment: Dictionary, voice: String, imperial: bool, left: Callable
+) -> Callable:
+	var seed: int = randi() % 1024
+	return func() -> PackedStringArray:
+		var meters: float = left.call()
+		if meters <= 0.0:
+			return PackedStringArray()
+		var now: Dictionary = moment.duplicate()
+		now["distance_m"] = meters
+		return PackedStringArray([figure(now, imperial), line(now, voice, imperial, seed)])
+
+
 ## How far a segment's start is, to the nearest 10 m or 10 ft: the rider is moving, so more
 ## precision would only be wrong by the time it is read.
 static func approach(meters: float, imperial: bool) -> String:

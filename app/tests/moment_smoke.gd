@@ -81,6 +81,25 @@ func _lines() -> void:
 	)
 	_check(MomentLines.figure(MOMENTS[12], false) == "190 m", "how far a segment's start is")
 	_check(MomentLines.approach(3.0, false) == "10 m", "never 0 m before the start")
+	var to_go: Array[float] = [187.4]
+	var count: Callable = MomentLines.countdown(
+		MOMENTS[12], "plain", false, func() -> float: return to_go[0]
+	)
+	var at_first: PackedStringArray = count.call()
+	_check(at_first[1] == "Wabern sprint starts in 190 m.", "counting from %s" % [at_first])
+	to_go[0] = 42.0
+	var nearer: PackedStringArray = count.call()
+	_check(nearer == PackedStringArray(["40 m", "Wabern sprint starts in 40 m."]), "counting down")
+	to_go[0] = 0.0
+	var there: PackedStringArray = count.call()
+	_check(there.is_empty(), "nothing left to count at the start")
+	var casual: Callable = MomentLines.countdown(
+		MOMENTS[12], "casual", false, func() -> float: return to_go[0] + 100.0
+	)
+	var once: PackedStringArray = casual.call()
+	for _i: int in range(6):
+		var again: PackedStringArray = casual.call()
+		_check(again == once, "one casual line for the whole countdown")
 
 
 func _plain(moment: Dictionary, imperial: bool) -> String:
@@ -170,6 +189,25 @@ func _card() -> void:
 		told == ["14:02  ·  A record.", "120 m  ·  The next segment."],
 		"the heads-up goes before the waiting card: %s" % [told]
 	)
+	card.clear()
+	# Its distance counts down while it shows, and it goes once the rider is there.
+	var left: Array[float] = [120.0]
+	var live: Callable = func() -> PackedStringArray:
+		if left[0] <= 0.0:
+			return PackedStringArray()
+		var now: String = MomentLines.approach(left[0], false)
+		return PackedStringArray([now, "Starts in %s." % now])
+	card.tell("120 m", "Starts in 120 m.", UiTheme.SEGMENT_COLOR, true, live)
+	left[0] = 64.0
+	await process_frame
+	await process_frame
+	_check(
+		card.current() == PackedStringArray(["60 m", "Starts in 60 m."]),
+		"the distance counts down: %s" % [card.current()]
+	)
+	left[0] = -1.0
+	await create_timer(MomentCard.SLIDE_SECONDS + 0.2).timeout
+	_check(not card.is_showing(), "gone at the start, before its time is up")
 	card.clear()
 	card.queue_free()
 
