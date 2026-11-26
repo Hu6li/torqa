@@ -43,6 +43,14 @@ const LINES: Dictionary[String, Array] = {
 		],
 		"{name} in {time}, a personal record by {gain}.",
 	],
+	"segment_ahead":
+	[
+		[
+			"{name} starts in {distance}, get ready!",
+			"{name} is coming up in {distance}. Time to wind it up!",
+		],
+		"{name} starts in {distance}.",
+	],
 	"halfway":
 	[
 		[
@@ -175,6 +183,9 @@ static func figure(moment: Dictionary, imperial: bool) -> String:
 		"halfway", "distance":
 			var meters: float = moment["distance_m"]
 			return distance(meters, imperial)
+		"segment_ahead":
+			var ahead: float = moment["distance_m"]
+			return approach(ahead, imperial)
 		"one_to_go":
 			return _one(imperial)
 		"power_peak", "step_held":
@@ -194,6 +205,14 @@ static func distance(meters: float, imperial: bool) -> String:
 	if is_equal_approx(rounded, roundf(rounded)):
 		return "%d %s" % [roundi(rounded), unit]
 	return "%.1f %s" % [rounded, unit]
+
+
+## How far a segment's start is, to the nearest 10 m or 10 ft: the rider is moving, so more
+## precision would only be wrong by the time it is read.
+static func approach(meters: float, imperial: bool) -> String:
+	if imperial:
+		return "%d ft" % maxi(10, roundi(meters / METERS_PER_FOOT / 10.0) * 10)
+	return "%d m" % maxi(10, roundi(meters / 10.0) * 10)
 
 
 ## A power record's duration: "5 s", "20 min", "1 h".
@@ -233,7 +252,8 @@ static func _values(moment: Dictionary, imperial: bool) -> Dictionary:
 		values["grade"] = "%.1f %%" % grade
 	if moment.has("distance_m"):
 		var meters: float = moment["distance_m"]
-		values["distance"] = distance(meters, imperial)
+		var ahead: bool = moment.get("kind", "") == "segment_ahead"
+		values["distance"] = approach(meters, imperial) if ahead else distance(meters, imperial)
 	if moment.has("power_w"):
 		var power: float = moment["power_w"]
 		values["power"] = "%d W" % roundi(power)

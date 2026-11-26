@@ -18,6 +18,7 @@ const MOMENTS: Array[Dictionary] = [
 	{"kind": "week_plan", "rides": 3, "planned": 4},
 	{"kind": "segment_done", "name": "Wabern sprint", "elapsed_s": 75.0},
 	{"kind": "segment_record", "name": "Wabern sprint", "elapsed_s": 75.0, "gain_s": 4.0},
+	{"kind": "segment_ahead", "name": "Wabern sprint", "distance_m": 187.4},
 ]
 
 var _failed: bool = false
@@ -73,6 +74,13 @@ func _lines() -> void:
 		"a segment record"
 	)
 	_check(MomentLines.figure(MOMENTS[10], false) == "1:15", "a segment's time")
+	# Its start announced in round figures of the rider's units (R301).
+	_check(_plain(MOMENTS[12], false) == "Wabern sprint starts in 190 m.", "a segment ahead")
+	_check(
+		_plain(MOMENTS[12], true) == "Wabern sprint starts in 610 ft.", "a segment ahead in feet"
+	)
+	_check(MomentLines.figure(MOMENTS[12], false) == "190 m", "how far a segment's start is")
+	_check(MomentLines.approach(3.0, false) == "10 m", "never 0 m before the start")
 
 
 func _plain(moment: Dictionary, imperial: bool) -> String:
@@ -146,6 +154,23 @@ func _card() -> void:
 	_check(told.size() == 2, "an empty line is not shown: %s" % [told])
 	card.clear()
 	_check(not card.visible and not card.is_showing(), "cleared")
+	# A segment ahead is a heads-up, not an achievement: no burst, and before the cards still
+	# waiting, though after the one on screen (R301).
+	var burst: CPUParticles2D = card.get("_burst")
+	card.tell("190 m", "A segment ahead.", UiTheme.SEGMENT_COLOR, true)
+	_check(card.is_showing() and not burst.emitting, "a heads-up without a burst")
+	card.clear()
+	told.clear()
+	card.tell("14:02", "A record.")
+	_check(burst.emitting, "an achievement with its burst")
+	card.tell("", "Halfway.")
+	card.tell("120 m", "The next segment.", UiTheme.SEGMENT_COLOR, true)
+	await create_timer(MomentCard.SHOW_SECONDS + MomentCard.SLIDE_SECONDS * 2.0 + 0.2).timeout
+	_check(
+		told == ["14:02  ·  A record.", "120 m  ·  The next segment."],
+		"the heads-up goes before the waiting card: %s" % [told]
+	)
+	card.clear()
 	card.queue_free()
 
 

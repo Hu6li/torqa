@@ -67,6 +67,13 @@ pub enum Moment {
         /// How much faster than the best time before.
         gain: Duration,
     },
+    /// One of the rider's segments starts shortly, so they can get ready (R301).
+    SegmentAhead {
+        /// The segment's name.
+        name: String,
+        /// How far its start was when told.
+        distance: Meters,
+    },
     /// Half the route lies behind the rider.
     Halfway {
         /// The distance ridden.

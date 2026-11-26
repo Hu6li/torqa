@@ -3559,6 +3559,15 @@ msgstr "So schnell bist du {name} noch nie gefahren, {gain} schneller als deine 
 msgid "{name} in {time}, a personal record by {gain}."
 msgstr "{name} in {time}, persönliche Bestzeit um {gain}."
 
+msgid "{name} starts in {distance}, get ready!"
+msgstr "{name} beginnt in {distance}, mach dich bereit!"
+
+msgid "{name} is coming up in {distance}. Time to wind it up!"
+msgstr "In {distance} kommt {name}. Zeit, Tempo aufzunehmen!"
+
+msgid "{name} starts in {distance}."
+msgstr "{name} beginnt in {distance}."
+
 msgid "%s  ·  %.1f km from km %.1f"
 msgstr "%s  ·  %.1f km ab km %.1f"
 

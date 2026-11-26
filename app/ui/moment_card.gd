@@ -1,10 +1,11 @@
 class_name MomentCard
 extends PanelContainer
 ## A moment of the ride (R124) on a card at the top centre over the HUD: its figure large, its
-## line below. It slides in with a short burst of particles in the brand blue and the zone
-## colours, stays a few seconds and slides out; moments that come meanwhile wait their turn,
-## so two never cover each other. Group connections (R249) come the same way, in red when one
-## dropped and green when it is back, with the burst in that colour.
+## line below. It slides in, for an achievement with a short burst of particles in the brand
+## blue and the zone colours, stays a few seconds and slides out; moments that come meanwhile
+## wait their turn, so two never cover each other, heads-ups first. Group connections (R249)
+## come the same way, in red when one dropped and green when it is back, with the burst in
+## that colour.
 
 ## A card was shown with `text`, e.g. for the overlay to show it in its bar.
 signal shown(text: String)
@@ -17,7 +18,7 @@ const WIDTH: float = 460.0
 const SIDE: float = 24.0
 const PADDING: float = 16.0
 
-## What is still to show: `[figure, line, accent]`.
+## What is still to show: `[figure, line, accent, heads_up]`.
 var _queue: Array[Array] = []
 var _figure: Label = UiTheme.value(36)
 var _line: Label = Label.new()
@@ -50,11 +51,23 @@ func _init() -> void:
 	_build_burst()
 
 
-## Shows `line` under `figure` (none if empty), in `accent`, after the cards before it.
-func tell(figure: String, line: String, accent: Color = UiTheme.ACCENT) -> void:
+## Shows `line` under `figure` (none if empty), in `accent`, after the cards before it. A
+## `heads_up` of what is coming comes without particles, as nothing is achieved yet, and before
+## the achievements still waiting: late, it would no longer be true.
+func tell(figure: String, line: String, accent: Color = UiTheme.ACCENT, heads_up := false) -> void:
 	if line.is_empty():
 		return
-	_queue.append([figure, line, accent])
+	var card: Array = [figure, line, accent, heads_up]
+	if heads_up:
+		var first: int = 0
+		for waiting: Array in _queue:
+			var waiting_heads_up: bool = waiting[3]
+			if not waiting_heads_up:
+				break
+			first += 1
+		_queue.insert(first, card)
+	else:
+		_queue.append(card)
 	if not is_showing():
 		_next()
 
@@ -112,7 +125,9 @@ func _next() -> void:
 	shown.emit(line if figure.is_empty() else "%s  ·  %s" % [figure, line])
 	_burst.position = Vector2(size.x / 2.0, size.y)
 	_burst.emission_rect_extents = Vector2(size.x / 2.0, 2.0)
-	_burst.restart()
+	var heads_up: bool = card[3]
+	if not heads_up:
+		_burst.restart()
 	_tween = create_tween()
 	_tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	_tween.tween_property(self, "position:y", TOP, SLIDE_SECONDS)

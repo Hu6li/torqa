@@ -251,6 +251,8 @@ Built in rideable steps:
     against the rider's best and the history's times (in the rider's units); marked on the
     profile, the course page's map and the ride's minimap; no banners in the world (R44/R89);
     `SCREENSHOT_SEGMENTS_ONLY=1 scripts/screenshots.sh` renders them all
+  - [x] A card with the chime about 15 s before a segment starts, at the rider's speed and
+    between 500 m and 50 m ahead, showing the distance (R301)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and

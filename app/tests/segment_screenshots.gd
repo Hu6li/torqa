@@ -97,6 +97,10 @@ static func _rides(main: Control, out: String) -> void:
 		app.start_ride(50.0, false, {"kind": "none"})
 		start.ride_started.emit(start.ride_options())
 		var name: String = "ride%d-" % ride
+		if ride == 2:
+			# The heads-up as the sprint comes (R301); the first ride opens with its greeting.
+			await _heads_up(main)
+			_save(main, out, name + "ahead")
 		await _reach(app, SPRINT_START_M - 70.0)
 		if ride == 1:
 			_save(main, out, name + "approach")
@@ -151,6 +155,21 @@ static func _reach(app: OrqwaApp, distance_m: float) -> void:
 			return
 		await tree.process_frame
 	push_error("SEGMENT SCREENSHOTS FAILED: the rider did not reach %.0f m" % distance_m)
+
+
+## Waits until the card tells of the segment ahead and has slid in.
+static func _heads_up(main: Control) -> void:
+	var tree: SceneTree = main.get_tree()
+	var screen: RideScreen = main.get_node("RideScreen")
+	var card: MomentCard = screen.get("_moment_card")
+	var until: int = Time.get_ticks_msec() + int(RIDE_TIMEOUT_S * 1000.0)
+	while Time.get_ticks_msec() < until:
+		var shown: PackedStringArray = card.current()
+		if shown.size() == 2 and shown[1].contains("Birdcage Walk sprint"):
+			await tree.create_timer(MomentCard.SLIDE_SECONDS + 0.2).timeout
+			return
+		await tree.process_frame
+	push_error("SEGMENT SCREENSHOTS FAILED: no card told of the segment ahead")
 
 
 static func _set_units(app: OrqwaApp, units: String) -> void:

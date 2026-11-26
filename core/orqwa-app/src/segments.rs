@@ -18,6 +18,12 @@ use crate::{ActiveRide, App, AppError};
 
 /// How far ahead of a segment the ride screen starts showing it, so the rider can get ready.
 const HERALD: Meters = Meters(500.0);
+/// How long before a segment's start, at the rider's speed, the ride tells them it is coming
+/// (R301): time to shift and wind up whatever the speed, where a fixed distance would come a
+/// minute early on a climb and late on a fast flat road…
+const CALL_AHEAD: Duration = Duration::from_secs(15);
+/// …but no later than this far before it, for a rider going slowly or standing still.
+const LAST_CALL: Meters = Meters(50.0);
 
 /// One of the rider's segments with their best time on it before this ride.
 #[derive(Debug, Clone, PartialEq)]
@@ -120,6 +126,40 @@ pub(crate) fn timed(active: &mut ActiveRide, real: bool) -> Vec<Moment> {
                 gain: best.saturating_sub(elapsed),
             },
             None => Moment::SegmentDone { name, elapsed },
+        });
+    }
+    moments
+}
+
+/// How far before a segment's start the rider is told of it, at `speed` metres a second with
+/// the ride sped up `time_scale` times: [`CALL_AHEAD`] of the rider's own time, between
+/// [`LAST_CALL`] and [`HERALD`].
+fn call_distance(speed: f64, time_scale: f64) -> Meters {
+    Meters((speed * time_scale * CALL_AHEAD.as_secs_f64()).clamp(LAST_CALL.0, HERALD.0))
+}
+
+/// The segments the rider is about to start since the last look, as moments, each told once a
+/// ride; none that will not be timed on it (passed, or jumped past).
+pub(crate) fn heralded(active: &mut ActiveRide) -> Vec<Moment> {
+    let state = active.ride.state();
+    let (position, speed) = (state.distance.0, state.speed.0);
+    let reach = call_distance(speed, active.time_scale);
+    let mut moments = Vec::new();
+    for ((record, done), told) in active
+        .records
+        .segments
+        .iter()
+        .zip(&active.segments_done)
+        .zip(&mut active.segments_told)
+    {
+        let ahead = record.segment.start_m - position;
+        if *done || *told || ahead <= 0.0 || ahead > reach.0 {
+            continue;
+        }
+        *told = true;
+        moments.push(Moment::SegmentAhead {
+            name: record.segment.name.clone(),
+            distance: Meters(ahead),
         });
     }
     moments
@@ -407,6 +447,50 @@ mod tests {
         app.change_segment(id, "Town sprint", Meters(60.0), Meters(250.0))
             .unwrap();
         assert_eq!(app.segments()[0].best, None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_segment_is_announced_the_same_time_ahead_on_the_flat_and_on_a_climb() {
+        let kmh = |v: f64| v / 3.6;
+        // 15 s ahead: 187.5 m at 45 km/h, 125 m at 30 km/h.
+        assert!((call_distance(kmh(45.0), 1.0).0 - 187.5).abs() < 1e-9);
+        assert!((call_distance(kmh(30.0), 1.0).0 - 125.0).abs() < 1e-9);
+        // A slow climb or a standstill still gets told before the start…
+        assert_eq!(call_distance(kmh(10.0), 1.0), LAST_CALL);
+        assert_eq!(call_distance(0.0, 1.0), LAST_CALL);
+        // …and no earlier than the panel shows it, even sped up.
+        assert_eq!(call_distance(kmh(40.0), 20.0), HERALD);
+        assert!((call_distance(kmh(30.0), 2.0).0 - 250.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_rider_is_told_once_before_a_segment_starts() {
+        let (dir, mut app) = loaded("segments-ahead");
+        app.add_segment("Sprint", Meters(400.0), Meters(700.0))
+            .unwrap();
+
+        let events = ride_to_the_finish(&mut app, &GhostChoice::None);
+        let told: Vec<(usize, Meters)> = events
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| match e {
+                AppEvent::Moment(Moment::SegmentAhead { name, distance }) if name == "Sprint" => {
+                    Some((i, *distance))
+                }
+                _ => None,
+            })
+            .collect();
+        let done = events
+            .iter()
+            .position(|e| matches!(e, AppEvent::Moment(Moment::SegmentDone { .. })));
+        assert_eq!(told.len(), 1, "{events:?}");
+        let (at, distance) = told[0];
+        assert!(done.is_some_and(|done| at < done), "told before it is done");
+        assert!(
+            distance.0 > 0.0 && distance.0 <= HERALD.0,
+            "told ahead of its start: {distance:?}"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

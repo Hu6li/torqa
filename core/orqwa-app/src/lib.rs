@@ -643,6 +643,8 @@ struct ActiveRide {
     next_climb: usize,
     /// Per entry of `records.segments`: timed, or passed before it could be.
     segments_done: Vec<bool>,
+    /// Per entry of `records.segments`: the rider was told it is coming.
+    segments_told: Vec<bool>,
     milestones: moments::Milestones,
     peaks: moments::PowerPeaks,
     steps: moments::StepsHeld,
@@ -3754,6 +3756,7 @@ impl App {
             finished: false,
             records,
             next_climb: 0,
+            segments_told: vec![false; segments_done.len()],
             segments_done,
             milestones,
             peaks,
@@ -4586,6 +4589,7 @@ impl App {
             events.extend(
                 segments::timed(active, real)
                     .into_iter()
+                    .chain(segments::heralded(active))
                     .map(AppEvent::Moment),
             );
             // The finish is the summary's to tell (R113).

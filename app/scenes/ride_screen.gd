@@ -704,16 +704,24 @@ func _fit_navigation() -> void:
 func _on_moment(moment: Dictionary) -> void:
 	var voice: String = _orqwa.profile().get("voice", "casual")
 	var line: String = "" if voice == "off" else MomentLines.line(moment, voice, _imperial)
-	_tell(MomentLines.figure(moment, _imperial), line)
+	var figure: String = MomentLines.figure(moment, _imperial)
+	if moment.get("kind", "") == "segment_ahead":
+		# A heads-up in the segments' colour, with the chime but nothing to celebrate yet (R301).
+		_tell(figure, line, UiTheme.SEGMENT_COLOR, "", true)
+	else:
+		_tell(figure, line)
 
 
-## On a card in `accent`, or as `bar` (else `line`) in the overlay's: a moment or connection (R249).
-func _tell(figure: String, line: String, accent := UiTheme.ACCENT, bar := "") -> void:
+## On a card in `accent`, or as `bar` (else `line`) in the overlay's: a moment, connection
+## (R249) or `heads_up` of what is coming.
+func _tell(
+	figure: String, line: String, accent := UiTheme.ACCENT, bar := "", heads_up := false
+) -> void:
 	if visible and not _finished and not line.is_empty() and is_overlay():
 		_overlay_hud.tell(line if bar.is_empty() else bar)
 		_play_chime()
 	elif visible and not _finished:
-		_moment_card.tell(figure, line, accent)
+		_moment_card.tell(figure, line, accent, heads_up)
 
 
 func _build_group_window() -> void:

@@ -4648,7 +4648,19 @@ msgid "{name} in {time}."
 msgstr ""
 
 #: app/ui/moment_lines.gd
+msgid "{name} is coming up in {distance}. Time to wind it up!"
+msgstr ""
+
+#: app/ui/moment_lines.gd
 msgid "{name} is done in {time}. Nicely ridden!"
+msgstr ""
+
+#: app/ui/moment_lines.gd
+msgid "{name} starts in {distance}, get ready!"
+msgstr ""
+
+#: app/ui/moment_lines.gd
+msgid "{name} starts in {distance}."
 msgstr ""
 
 #: app/ui/moment_lines.gd
