@@ -493,6 +493,15 @@ func _segments() -> void:
 		not form.visible and is_equal_approx(length, 300.0), "the segment is listed: %s" % [marked]
 	)
 	_check(_orqwa.save_segment(id, "Smoke sprint", 0.0, 300.0), "renamed")
+	# The maps draw its stretch of road: due north from the start for 300 m.
+	var listed: Dictionary = _orqwa.segments()[0]
+	var stretch: PackedVector2Array = listed.get("track", PackedVector2Array())
+	var ends_ok: bool = (
+		stretch.size() >= 2
+		and stretch[0].length() < 2.0
+		and stretch[stretch.size() - 1].distance_to(Vector2(0.0, 300.0)) < 2.0
+	)
+	_check(ends_ok, "the stretch for the maps: %s" % stretch)
 	_check(not _orqwa.save_segment(-1, "Elsewhere", 300.0, 900.0), "not beyond the finish")
 	_check(not _failure.is_empty(), "the refusal is reported")
 	_failure = ""

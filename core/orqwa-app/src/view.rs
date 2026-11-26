@@ -2,6 +2,7 @@
 //! recorded rides.
 
 use orqwa_domain::recording::Sample;
+use orqwa_domain::units::Meters;
 use orqwa_routes::{LocalProjection, Route};
 
 /// A recorded value over the ride as `(elapsed seconds, value)`, averaged into at most
@@ -73,6 +74,35 @@ fn pick<T>(
     picked
 }
 
+/// The stretch of track from `start` to `end` along the route (a rider's segment, R300), on the
+/// same grid as [`track`] and as finely as `max_points` would draw the whole route, beginning
+/// and ending exactly at those distances.
+#[must_use]
+pub fn track_between(
+    route: &Route,
+    start: Meters,
+    end: Meters,
+    max_points: usize,
+) -> Vec<(f64, f64)> {
+    let projection = LocalProjection::for_route(route);
+    let at = |distance: Meters| {
+        let position = route.position(distance);
+        projection.project(position.lat, position.lon)
+    };
+    let points = route.points();
+    let step = points.len().div_ceil(max_points.max(2)).max(1);
+    let mut stretch = vec![at(start)];
+    stretch.extend(
+        points
+            .iter()
+            .step_by(step)
+            .filter(|p| p.distance.0 > start.0 && p.distance.0 < end.0)
+            .map(|p| projection.project(p.lat, p.lon)),
+    );
+    stretch.push(at(end));
+    stretch
+}
+
 #[cfg(test)]
 mod tests {
     use std::fmt::Write as _;
@@ -131,6 +161,29 @@ mod tests {
         assert_eq!(profile[0], (0.0, route.points()[0].elevation.0));
         let finish = profile[profile.len() - 1];
         assert!((finish.0 - route.length().0).abs() < 1e-9);
+    }
+
+    #[tokio::test]
+    async fn a_segments_stretch_runs_along_the_road_between_its_ends() {
+        let route = route_east().await;
+
+        let stretch = track_between(&route, Meters(450.0), Meters(1230.0), 2000);
+
+        // Due east: the stretch starts 450 m and ends 1230 m east of the start, on the road.
+        let (first, last) = (stretch[0], stretch[stretch.len() - 1]);
+        assert!(
+            (first.0 - 450.0).abs() < 2.0 && first.1.abs() < 2.0,
+            "{first:?}"
+        );
+        assert!(
+            (last.0 - 1230.0).abs() < 2.0 && last.1.abs() < 2.0,
+            "{last:?}"
+        );
+        assert!(stretch.len() > 2, "points between its ends: {stretch:?}");
+        assert!(
+            stretch.windows(2).all(|pair| pair[1].0 > pair[0].0),
+            "forward along the road: {stretch:?}"
+        );
     }
 
     #[tokio::test]

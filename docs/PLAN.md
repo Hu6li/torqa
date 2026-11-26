@@ -248,7 +248,9 @@ Built in rideable steps:
   - [x] The rider's own segments (R300): marked on a course's page by typed or clicked ends,
     or from a GPX track matched forward along the course (`orqwa_routes::segments`); stored per
     rider and route; timed like climbs with a HUD panel from 500 m ahead, moments, records
-    against the rider's best and the history's times; no banners in the world (R44/R89)
+    against the rider's best and the history's times (in the rider's units); marked on the
+    profile, the course page's map and the ride's minimap; no banners in the world (R44/R89);
+    `SCREENSHOT_SEGMENTS_ONLY=1 scripts/screenshots.sh` renders them all
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and

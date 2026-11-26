@@ -98,6 +98,7 @@ func open(course: Dictionary) -> void:
 	_profile.set_profile(profile)
 	_profile.set_climbs([])
 	_profile.set_segments([])
+	_path_card.set_segments([], Rect2())
 	_segments.clear()
 	_records.text = ""
 	_status.text = ""
@@ -252,7 +253,7 @@ func _init() -> void:
 	left.add_child(_profile)
 	_records.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	left.add_child(_records)
-	_segments.changed.connect(_profile.set_segments)
+	_segments.changed.connect(_on_segments_changed)
 	_segments.picking_changed.connect(_on_segment_picking)
 	_profile.jump_requested.connect(_segments.pick)
 	left.add_child(_segments)
@@ -487,11 +488,16 @@ func _show_route() -> void:
 	if climbs.get("route_best_s") != null:
 		var best: float = climbs["route_best_s"]
 		lines.append(tr("Your best time on this route: %s") % UiTheme.duration(best))
+	var imperial: bool = _orqwa.profile().get("units", "metric") == "imperial"
 	for climb: Dictionary in climb_list:
 		var category: String = climb["category"]
-		var length_km: float = climb["length_m"] / 1000.0
+		var length_m: float = climb["length_m"]
 		var grade: float = climb["grade"]
-		var line: String = tr("%s %.1f km at %.1f %%") % [tr(category), length_km, grade]
+		var line: String = (
+			tr("%s %.1f mi at %.1f %%") % [tr(category), length_m / 1609.344, grade]
+			if imperial
+			else tr("%s %.1f km at %.1f %%") % [tr(category), length_m / 1000.0, grade]
+		)
 		if climb["best_s"] != null:
 			var climb_best: float = climb["best_s"]
 			line += " " + tr("(best %s)") % UiTheme.duration(climb_best)
@@ -501,6 +507,13 @@ func _show_route() -> void:
 	var ftp: float = _orqwa.profile().get("ftp_w", 200.0)
 	_ghost.configure(_orqwa.has_personal_best(), ftp)
 	_keep_preview()
+
+
+## The profile and the map mark the segments as listed.
+func _on_segments_changed(segments: Array) -> void:
+	_profile.set_segments(segments)
+	var frame: Rect2 = _orqwa.course_position(0.0).get("frame", Rect2())
+	_path_card.set_segments(segments, frame)
 
 
 ## While a segment is marked, a click on the profile sets its ends.

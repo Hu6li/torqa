@@ -192,6 +192,10 @@ const COMMIT: &str = env!("ORQWA_COMMIT");
 /// The branch the build script found (see `build.rs`).
 const BRANCH: &str = env!("ORQWA_BRANCH");
 
+/// As finely as the maps draw the whole route (`track(2000)` in the app), so a segment's
+/// stretch lies on its road.
+const MAP_POINTS: usize = 2000;
+
 /// `main@90b74ef`; the commit alone without a branch, and nothing without a commit, as a
 /// branch alone does not tell which build it is.
 fn build_name(branch: &str, commit: &str) -> String {
@@ -3683,12 +3687,24 @@ impl OrqwaApp {
     }
 
     /// The active rider's segments of the loaded course (R300), as added: `[{id, name, start_m,
-    /// end_m, length_m, best_s}]`; `best_s` is `null` before a ride on it.
+    /// end_m, length_m, best_s, track}]`; `best_s` is `null` before a ride on it, and `track`
+    /// is its stretch of road on the grid of `track()`, for the maps.
     #[func]
     fn segments(&self) -> VarArray {
         let mut array = VarArray::new();
-        for entry in self.app.as_ref().map(App::segments).unwrap_or_default() {
+        let Some(app) = &self.app else {
+            return array;
+        };
+        let Some(route) = app.route() else {
+            return array;
+        };
+        for entry in app.segments() {
             let s = &entry.segment;
+            let track: PackedVector2Array =
+                view::track_between(route, Meters(s.start_m), Meters(s.end_m), MAP_POINTS)
+                    .into_iter()
+                    .map(|(east, north)| vector2(east, north))
+                    .collect();
             array.push(
                 &vdict! {
                     "id" => i64::from(s.id),
@@ -3699,6 +3715,7 @@ impl OrqwaApp {
                     "best_s" => &entry
                         .best
                         .map_or_else(Variant::nil, |b| b.as_secs_f64().to_variant()),
+                    "track" => &track,
                 }
                 .to_variant(),
             );

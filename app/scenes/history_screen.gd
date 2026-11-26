@@ -482,22 +482,32 @@ func _fill_climbs(ride: Dictionary) -> void:
 		var route_s: float = route_time
 		var record: bool = ride["route_record"]
 		_climbs.add_child(_time_row(tr("Whole route"), route_s, null, record))
+	# Lengths and places in the rider's units, as everywhere else on the page.
+	var unit: float = 1000.0 * (KM_PER_MILE if _imperial else 1.0)
 	for i: int in range(climbs.size()):
 		var climb: Dictionary = climbs[i]
-		var start_km: float = climb["start_m"] / 1000.0
-		var length_km: float = climb["length_m"] / 1000.0
+		var start: float = climb["start_m"] / unit
+		var length: float = climb["length_m"] / unit
 		var time_s: float = climb["time_s"]
 		var record: bool = climb["record"]
-		var what: String = tr("Climb %d  ·  %.1f km from km %.1f") % [i + 1, length_km, start_km]
+		var what: String = (
+			tr("Climb %d  ·  %.1f mi from mi %.1f") % [i + 1, length, start]
+			if _imperial
+			else tr("Climb %d  ·  %.1f km from km %.1f") % [i + 1, length, start]
+		)
 		_climbs.add_child(_time_row(what, time_s, climb["avg_power"], record))
 	# The rider's own segments (R300), by the names they gave them.
 	for segment: Dictionary in segments:
 		var segment_name: String = segment["name"]
-		var from_km: float = segment["start_m"] / 1000.0
-		var segment_km: float = segment["length_m"] / 1000.0
+		var segment_start: float = segment["start_m"] / unit
+		var segment_length: float = segment["length_m"] / unit
 		var segment_s: float = segment["time_s"]
 		var segment_record: bool = segment["record"]
-		var what: String = tr("%s  ·  %.1f km from km %.1f") % [segment_name, segment_km, from_km]
+		var what: String = (
+			tr("%s  ·  %.1f mi from mi %.1f") % [segment_name, segment_length, segment_start]
+			if _imperial
+			else tr("%s  ·  %.1f km from km %.1f") % [segment_name, segment_length, segment_start]
+		)
 		_climbs.add_child(_time_row(what, segment_s, segment["avg_power"], segment_record))
 
 

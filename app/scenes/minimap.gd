@@ -37,6 +37,8 @@ var _ghost: Vector2 = Vector2.ZERO
 var _ghost_shown: bool = false
 var _peers: Array[Dictionary] = []
 var _track: PackedVector2Array = PackedVector2Array()
+## The rider's segments' stretches of the track (R300), on its grid.
+var _segments: Array[PackedVector2Array] = []
 ## The track's extent, for the whole-route view.
 var _bounds: Rect2 = Rect2()
 var _rider: Vector2 = Vector2.ZERO
@@ -61,6 +63,16 @@ func set_track(track: PackedVector2Array) -> void:
 	_bounds = Rect2(_track[0], Vector2.ZERO) if not _track.is_empty() else Rect2()
 	for point: Vector2 in _track:
 		_bounds = _bounds.expand(point)
+	_redraw_map()
+
+
+## Marks the rider's segments (`OrqwaApp.segments()`, R300) in their colour over the route.
+func set_segments(segments: Array) -> void:
+	_segments.clear()
+	for segment: Dictionary in segments:
+		var stretch: PackedVector2Array = segment.get("track", PackedVector2Array())
+		if stretch.size() >= 2:
+			_segments.append(stretch)
 	_redraw_map()
 
 
@@ -161,6 +173,8 @@ func _draw_map() -> void:
 		var track: PackedVector2Array = _map_scale * _track
 		_map.draw_polyline(track, Color(0, 0, 0, 0.35), 6.0, true)
 		_map.draw_polyline(track, TRACK_COLOR, 3.5, true)
+		for stretch: PackedVector2Array in _segments:
+			_map.draw_polyline(_map_scale * stretch, UiTheme.SEGMENT_COLOR, 4.5, true)
 		_map.draw_circle(track[0], 5.0, START_COLOR)
 		_map.draw_circle(track[track.size() - 1], 5.0, FINISH_COLOR)
 

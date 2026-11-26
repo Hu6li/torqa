@@ -10,6 +10,7 @@
 # SCREENSHOT_CONTINUATION_FILTER_ONLY=1 captures the progress filter without building a world.
 # SCREENSHOT_RIDE_OPTIONS_ONLY=1 stops after course detail and the ride's settings.
 # SCREENSHOT_WORLDS_ONLY=1 captures the World type filter and an imported world's course page.
+# SCREENSHOT_SEGMENTS_ONLY=1 captures a rider's segments on a course page, two rides and times.
 set -eu
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

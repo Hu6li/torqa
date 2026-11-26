@@ -19,6 +19,9 @@ var _map: TextureRect = TextureRect.new()
 var _lines: Control = Control.new()
 ## A saved course position in route coordinates and its prepared map frame, if any.
 var _marker: Dictionary = {}
+## The rider's segments' stretches (R300) in route coordinates, and the map picture's frame.
+var _segments: Array[PackedVector2Array] = []
+var _frame: Rect2 = Rect2()
 
 
 func _init() -> void:
@@ -71,6 +74,18 @@ func set_marker(marker: Dictionary) -> void:
 	_lines.queue_redraw()
 
 
+## Marks the rider's segments (`OrqwaApp.segments()`, R300) in their colour; `frame` places
+## them on the map picture (`OrqwaApp.course_position()`'s), empty where there is none.
+func set_segments(segments: Array, frame: Rect2) -> void:
+	_segments.clear()
+	for segment: Dictionary in segments:
+		var stretch: PackedVector2Array = segment.get("track", PackedVector2Array())
+		if stretch.size() >= 2:
+			_segments.append(stretch)
+	_frame = frame
+	_lines.queue_redraw()
+
+
 func _draw() -> void:
 	var background: StyleBoxFlat = StyleBoxFlat.new()
 	background.bg_color = BACKGROUND
@@ -90,6 +105,14 @@ func _draw_lines() -> void:
 	# The map picture carries the track already, placed to its own fit.
 	if _track.size() >= 2 and not _map.visible:
 		_draw_track(Rect2(Vector2(PADDING, PADDING), size - Vector2(PADDING * 2.0, PADDING * 2.0)))
+	for stretch: PackedVector2Array in _segments:
+		var points: PackedVector2Array = PackedVector2Array()
+		for point: Vector2 in stretch:
+			points.append(_card_position(point, _frame))
+		if points.size() >= 2 and points[0].is_finite():
+			# Wider than the blue route under it, or teal beside blue is easily missed.
+			_lines.draw_polyline(points, Color(0, 0, 0, 0.6), 10.0, true)
+			_lines.draw_polyline(points, UiTheme.SEGMENT_COLOR, 5.5, true)
 	var marker: Vector2 = _marker_screen_position()
 	if marker.is_finite():
 		_lines.draw_circle(marker, 8.0, Color(BLUE, 0.3))
@@ -124,8 +147,14 @@ func _marker_screen_position() -> Vector2:
 	if _marker.is_empty():
 		return Vector2.INF
 	var position: Vector2 = _marker["position"]
+	var marker_frame: Rect2 = _marker.get("frame", Rect2())
+	return _card_position(position, marker_frame)
+
+
+## Where `position` (metres east/north of the start) lies on the card: on the map picture,
+## placed by its `frame`, or on the plain track; infinite where it cannot be placed.
+func _card_position(position: Vector2, frame: Rect2) -> Vector2:
 	if _map.visible:
-		var frame: Rect2 = _marker.get("frame", Rect2())
 		if not frame.has_area():
 			return Vector2.INF
 		var picture: Vector2 = _map.texture.get_size()

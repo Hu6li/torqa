@@ -76,6 +76,9 @@ msgstr "%s  ·  Anstieg %d von %d"
 msgid "%s %.1f km at %.1f %%"
 msgstr "%s %.1f km bei %.1f %% Steigung"
 
+msgid "%s %.1f mi at %.1f %%"
+msgstr "%s %.1f mi bei %.1f %% Steigung"
+
 msgid "%s (copy)"
 msgstr "%s (Kopie)"
 
@@ -3564,3 +3567,9 @@ msgstr "Das Segment konnte nicht gespeichert werden."
 
 msgid "%s does not follow this course."
 msgstr "%s folgt dieser Strecke nicht."
+
+msgid "Climb %d  ·  %.1f mi from mi %.1f"
+msgstr "Anstieg %d  ·  %.1f mi ab mi %.1f"
+
+msgid "%s  ·  %.1f mi from mi %.1f"
+msgstr "%s  ·  %.1f mi ab mi %.1f"
