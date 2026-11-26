@@ -72,6 +72,8 @@ var _ghost_distance: float = -1.0
 var _peers: Array[Dictionary] = []
 ## `[start m, end m, colour]` per climb.
 var _climbs: Array[Array] = []
+## `[start m, end m]` per segment of the rider's (R300).
+var _segments: Array[Array] = []
 var _min_elevation: float = 0.0
 var _max_elevation: float = 0.0
 ## The gradient colour at each profile point; the area blends between them.
@@ -108,6 +110,15 @@ func set_climbs(climbs: Array) -> void:
 		_climbs.append(
 			[climb["start_m"], climb["end_m"], UiTheme.CLIMB_COLORS.get(category, Color.GRAY)]
 		)
+	queue_redraw()
+
+
+## Marks the rider's segments (`OrqwaApp.segments()`, R300) with a band along the top and their
+## ends with faint lines, so they read apart from the climbs at the bottom.
+func set_segments(segments: Array) -> void:
+	_segments.clear()
+	for segment: Dictionary in segments:
+		_segments.append([segment["start_m"], segment["end_m"]])
 	queue_redraw()
 
 
@@ -170,6 +181,15 @@ func _draw() -> void:
 		var from: float = _to_screen(Vector2(start_m, 0.0)).x
 		var to: float = _to_screen(Vector2(end_m, 0.0)).x
 		draw_rect(Rect2(from, bottom - 3.0, to - from, 3.0), color)
+	var ends: Color = Color(UiTheme.SEGMENT_COLOR, 0.35)
+	for segment: Array in _segments:
+		var start_m: float = segment[0]
+		var end_m: float = segment[1]
+		var from: float = _to_screen(Vector2(start_m, 0.0)).x
+		var to: float = _to_screen(Vector2(end_m, 0.0)).x
+		draw_rect(Rect2(from, 0.0, to - from, 3.0), UiTheme.SEGMENT_COLOR)
+		draw_line(Vector2(from, 0.0), Vector2(from, bottom), ends, 1.0)
+		draw_line(Vector2(to, 0.0), Vector2(to, bottom), ends, 1.0)
 
 	for peer: Dictionary in _peers:
 		var id: int = peer["id"]

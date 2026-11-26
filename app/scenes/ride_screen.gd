@@ -28,8 +28,6 @@ const OFFER_BOTTOM: float = 96.0
 ## long, a lower preset is suggested once per ride.
 const FRAME_BUDGET_S: float = 1.0 / 60.0 * 1.15
 const SLOW_FOR_S: float = 10.0
-## Speeds of a simulated ride (#53).
-const KM_PER_MILE: float = 1.609344
 const METERS_PER_FOOT: float = 0.3048
 ## How often the workout chart is redrawn: samples come once a second.
 const CHART_EVERY_S: float = 1.0
@@ -46,9 +44,8 @@ var _settings_for_pause: bool = false
 var _options: Dictionary = {}
 var _sound: RideSound = RideSound.new()
 var _imperial: bool = false
-var _climb_panel: PanelContainer = PanelContainer.new()
-var _climb_title: Label = UiTheme.caption("")
-var _climb_left: Label = UiTheme.value(14)
+var _climb_panel: ClimbPanel = ClimbPanel.new()
+var _segment_panel: SegmentPanel = SegmentPanel.new()
 var _ghost_panel: PanelContainer = PanelContainer.new()
 var _ghost_name: Label = UiTheme.caption("")
 var _ghost_gap: Label = UiTheme.value(20)
@@ -166,10 +163,12 @@ func begin(options: Dictionary) -> void:
 	var climb_info: Dictionary = _orqwa.climbs()
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
+	_profile.set_segments(_orqwa.segments())
 	_climb_panel.hide()
+	_segment_panel.hide()
 	_ghost_panel.hide()
-	_imperial = rider.get("units", "metric") == "imperial"
-	_hud.imperial = _imperial
+	var units: String = rider.get("units", "metric")
+	_set_imperial(units == "imperial")
 	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if not _orqwa.trainer_connected():
 		_show_toast(tr("Waiting for the trainer…"))
@@ -196,7 +195,8 @@ func _ready() -> void:
 	_build_backdrop()
 	_workout_panel.hide()
 	($HudColumn as VBoxContainer).add_child(_workout_panel)
-	_build_climb_panel()
+	(%RightColumn as VBoxContainer).add_child(_climb_panel)
+	(%RightColumn as VBoxContainer).add_child(_segment_panel)
 	(%RightColumn as VBoxContainer).add_child(_group_riders)
 	_build_ghost_panel()
 	resized.connect(_request_navigation_layout)
@@ -355,7 +355,8 @@ func _process(delta: float) -> void:
 	else:
 		_profile_info.text = "%d m  ·  %+.1f %%" % [roundi(elevation), grade]
 	_minimap.set_rider(Vector2(x_m, y_m), heading)
-	_show_climb(state["climb"])
+	_climb_panel.show_climb(state["climb"])
+	_segment_panel.show_segment(state["segment"])
 	_show_ghost(state["ghost"])
 	_profile.set_rider_distance(distance_m)
 
@@ -520,8 +521,8 @@ func _on_profile_changed(profile: Dictionary) -> void:
 		return
 	var language: String = profile.get("language", "")
 	ProfileTab.apply_language(language)
-	_imperial = profile.get("units", "metric") == "imperial"
-	_hud.imperial = _imperial
+	var units: String = profile.get("units", "metric")
+	_set_imperial(units == "imperial")
 	_hud.show_layout(_orqwa.hud_layout(not _workout.is_empty()))
 	if profile.get("map_style") != before.get("map_style"):
 		_minimap.set_map(_orqwa.minimap_mesh())
@@ -654,47 +655,12 @@ func _show_ghost(ghost: Variant) -> void:
 	_ghost_panel.show()
 
 
-func _build_climb_panel() -> void:
-	var rows: VBoxContainer = VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 2)
-	rows.add_child(_climb_title)
-	rows.add_child(_climb_left)
-	var style: StyleBoxFlat = UiTheme.panel()
-	style.content_margin_top = 10
-	style.content_margin_bottom = 10
-	_climb_panel.add_theme_stylebox_override("panel", style)
-	_climb_panel.add_child(rows)
-	_climb_panel.hide()
-	(%RightColumn as VBoxContainer).add_child(_climb_panel)
-
-
-## Progress on the climb the rider is on (`ride_state()["climb"]`), hidden between climbs.
-func _show_climb(climb: Variant) -> void:
-	if climb == null:
-		_climb_panel.hide()
-		return
-	var info: Dictionary = climb
-	var index: int = info["index"]
-	var count: int = info["count"]
-	var category: String = info["category"]
-	var left_m: float = info["length_m"] - info["ridden_m"]
-	var grade: float = info["grade"]
-	var ascent_m: float = info["remaining_ascent_m"]
-	_climb_title.text = (tr("%s  ·  climb %d of %d") % [tr(category).to_upper(), index + 1, count])
-	var color: Color = UiTheme.CLIMB_COLORS.get(category, UiTheme.MUTED)
-	_climb_title.add_theme_color_override("font_color", color)
-	var left: String = (
-		"%.2fmi" % (left_m / 1000.0 / KM_PER_MILE)
-		if _imperial
-		else ("%.1fkm" % (left_m / 1000.0) if left_m >= 1000.0 else "%dm" % roundi(left_m))
-	)
-	var ascent: String = (
-		tr("%sft ascent") % roundi(ascent_m / METERS_PER_FOOT)
-		if _imperial
-		else tr("%sm ascent") % roundi(ascent_m)
-	)
-	_climb_left.text = tr("%s · %s · %.1f%% to go") % [ascent, left, grade]
-	_climb_panel.show()
+## Metric or imperial figures everywhere on the ride's screen.
+func _set_imperial(imperial: bool) -> void:
+	_imperial = imperial
+	_hud.imperial = imperial
+	_climb_panel.imperial = imperial
+	_segment_panel.imperial = imperial
 
 
 func _request_navigation_layout() -> void:

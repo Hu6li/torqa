@@ -245,6 +245,10 @@ Built in rideable steps:
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
+  - [x] The rider's own segments (R300): marked on a course's page by typed or clicked ends,
+    or from a GPX track matched forward along the course (`orqwa_routes::segments`); stored per
+    rider and route; timed like climbs with a HUD panel from 500 m ahead, moments, records
+    against the rider's best and the history's times; no banners in the world (R44/R89)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and

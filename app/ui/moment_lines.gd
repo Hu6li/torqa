@@ -27,6 +27,22 @@ const LINES: Dictionary[String, Array] = {
 		],
 		"Climb {n} in {time}, a personal record by {gain}.",
 	],
+	"segment_done":
+	[
+		[
+			"{name} is done in {time}. Nicely ridden!",
+			"That's {name} behind you, in {time}!",
+		],
+		"{name} in {time}.",
+	],
+	"segment_record":
+	[
+		[
+			"{time} on {name} is your fastest yet!",
+			"You've never ridden {name} faster, {gain} quicker than your best!",
+		],
+		"{name} in {time}, a personal record by {gain}.",
+	],
 	"halfway":
 	[
 		[
@@ -153,7 +169,7 @@ static func _kind(moment: Dictionary) -> String:
 ## The figure a card shows large for `moment`, e.g. "14:02" or "25 km"; empty for none.
 static func figure(moment: Dictionary, imperial: bool) -> String:
 	match moment.get("kind", ""):
-		"climb_topped", "climb_record":
+		"climb_topped", "climb_record", "segment_done", "segment_record":
 			var elapsed: float = moment["elapsed_s"]
 			return UiTheme.duration(elapsed)
 		"halfway", "distance":
@@ -230,4 +246,6 @@ static func _values(moment: Dictionary, imperial: bool) -> Dictionary:
 		values["planned"] = moment["planned"]
 	if moment.has("course"):
 		values["course"] = moment["course"]
+	if moment.has("name"):
+		values["name"] = moment["name"]
 	return values

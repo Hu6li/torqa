@@ -472,8 +472,9 @@ func _fill_climbs(ride: Dictionary) -> void:
 	for child: Node in _climbs.get_children():
 		child.queue_free()
 	var climbs: Array = ride.get("climbs", [])
+	var segments: Array = ride.get("segments", [])
 	var route_time: Variant = ride.get("route_time_s")
-	_climbs.visible = not climbs.is_empty() or route_time != null
+	_climbs.visible = not climbs.is_empty() or not segments.is_empty() or route_time != null
 	if not _climbs.visible:
 		return
 	_climbs.add_child(UiTheme.caption(tr("Times")))
@@ -489,6 +490,15 @@ func _fill_climbs(ride: Dictionary) -> void:
 		var record: bool = climb["record"]
 		var what: String = tr("Climb %d  ·  %.1f km from km %.1f") % [i + 1, length_km, start_km]
 		_climbs.add_child(_time_row(what, time_s, climb["avg_power"], record))
+	# The rider's own segments (R300), by the names they gave them.
+	for segment: Dictionary in segments:
+		var segment_name: String = segment["name"]
+		var from_km: float = segment["start_m"] / 1000.0
+		var segment_km: float = segment["length_m"] / 1000.0
+		var segment_s: float = segment["time_s"]
+		var segment_record: bool = segment["record"]
+		var what: String = tr("%s  ·  %.1f km from km %.1f") % [segment_name, segment_km, from_km]
+		_climbs.add_child(_time_row(what, segment_s, segment["avg_power"], segment_record))
 
 
 ## The ride's best power over each duration, over the rider's best of all rides (R62).
@@ -504,6 +514,8 @@ func _time_row(what: String, seconds: float, power: Variant, record: bool) -> HB
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	var name_label: Label = Label.new()
+	# Already translated, and a segment's own name is never looked up.
+	name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	name_label.text = what
 	name_label.custom_minimum_size = Vector2(300, 0)
 	row.add_child(name_label)

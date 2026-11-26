@@ -5480,7 +5480,9 @@ fn voice_of(data: &VarDictionary) -> Voice {
 /// A moment of a ride (R124) as `{kind, …}`: `climb_topped {index, elapsed_s, grade_pct}`,
 /// `climb_record {index, elapsed_s, gain_s}`, `halfway {distance_m}`, `one_to_go`,
 /// `distance {distance_m}`, `power_peak {duration_s, power_w}`, `step_held {index, power_w}`,
-/// `first_ride {course}`, `streak {rides}` or `week_plan {rides, planned}`; `index` counts climbs from 0, as `climbs()` does.
+/// `first_ride {course}`, `streak {rides}`, `week_plan {rides, planned}`, `segment_done {name,
+/// elapsed_s}` or `segment_record {name, elapsed_s, gain_s}`; `index` counts climbs from 0, as
+/// `climbs()` does.
 fn moment_dict(moment: &Moment) -> VarDictionary {
     let index = |i: usize| i64::try_from(i).unwrap_or(0);
     match *moment {

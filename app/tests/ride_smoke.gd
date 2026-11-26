@@ -70,10 +70,29 @@ func _run() -> void:
 	var first_countries: Variant = first.get("countries")
 	_check(first_countries is Array, "the courses list their countries: %s" % first)
 
+	_segments()
+
 	_check(_orqwa.connect_fake_trainer(250.0, 90.0), "fake trainer connected")
 	_check(_orqwa.start_ride(50.0, false, {"kind": "none"}), "ride started")
 	await create_timer(2.0).timeout
 	var state: Dictionary = _orqwa.ride_state()
+	# On the segment from the start, timed on the HUD (R300).
+	var on_segment: Variant = state.get("segment")
+	var segment_state: Dictionary = on_segment if on_segment is Dictionary else {}
+	var segment_name: String = segment_state.get("name", "")
+	var reached: bool = segment_state.get("ahead_m", 0.0) == null
+	_check(segment_name == "Smoke sprint" and reached, "on the segment: %s" % segment_state)
+	var panel: SegmentPanel = SegmentPanel.new()
+	root.add_child(panel)
+	panel.show_segment(on_segment)
+	_check(panel.visible, "the segment's panel shows")
+	panel.show_segment(null)
+	_check(not panel.visible, "and hides away from segments")
+	panel.free()
+	for sprint: Dictionary in _orqwa.segments():
+		var sprint_id: int = sprint["id"]
+		_check(_orqwa.remove_segment(sprint_id), "segment removed")
+	_check(_orqwa.segments().is_empty(), "no segments left")
 	var distance_m: float = state.get("distance_m", 0.0)
 	var power: float = state.get("power", 0.0)
 	_check(distance_m > 0.5, "rider moves: %s" % state)
@@ -435,6 +454,50 @@ func _wait_for(sig: Signal) -> Array:
 		received[0], "signal %s within %ss (failure: %s)" % [sig.get_name(), TIMEOUT_S, _failure]
 	)
 	return result
+
+
+## The rider marks a segment of the loaded course on its page (R300): typed in or clicked on
+## the profile, listed with its length, renamed, and only saved when long enough to time.
+func _segments() -> void:
+	var list: SegmentList = SegmentList.new()
+	list.bind(_orqwa)
+	root.add_child(list)
+	# Left by an interrupted run: the rider's data outlives it.
+	for left: Dictionary in _orqwa.segments():
+		var left_id: int = left["id"]
+		_orqwa.remove_segment(left_id)
+	var marked: Array = []
+	list.changed.connect(func(segments: Array) -> void: marked.assign(segments))
+	list.show_segments(400.0)
+	_check(list.visible and marked.is_empty(), "no segments yet: %s" % [marked])
+	var form: Control = list.get("_form")
+	var save: Button = list.get("_save")
+	var field: LineEdit = list.get("_name")
+	var actions: HBoxContainer = list.get("_actions")
+	var add: Button = actions.get_child(0)
+	add.pressed.emit()
+	_check(form.visible and save.disabled, "a new segment waits for its name")
+	field.text = "Smoke"
+	field.text_changed.emit(field.text)
+	list.pick(100.0)
+	list.pick(120.0)
+	_check(save.disabled, "20 m is too short to time")
+	list.pick(0.0)
+	list.pick(300.0)
+	_check(not save.disabled, "the profile's clicks set its ends")
+	save.pressed.emit()
+	var first: Dictionary = marked[0] if marked.size() == 1 else {}
+	var length: float = first.get("length_m", 0.0)
+	var id: int = first.get("id", 0)
+	_check(
+		not form.visible and is_equal_approx(length, 300.0), "the segment is listed: %s" % [marked]
+	)
+	_check(_orqwa.save_segment(id, "Smoke sprint", 0.0, 300.0), "renamed")
+	_check(not _orqwa.save_segment(-1, "Elsewhere", 300.0, 900.0), "not beyond the finish")
+	_check(not _failure.is_empty(), "the refusal is reported")
+	_failure = ""
+	_check(_orqwa.segments().size() == 1, "one segment: %s" % [_orqwa.segments()])
+	list.free()
 
 
 func _write_route(path: String) -> void:

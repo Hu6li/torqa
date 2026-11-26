@@ -463,12 +463,20 @@ func _run() -> void:
 	while not prepared[0] and Time.get_ticks_msec() < until:
 		await process_frame
 	_check(prepared[0], "course prepared")
-	# The prepared course opens on its detail page.
+	# The prepared course opens on its detail page, with a segment of the rider's own (R300),
+	# removed again so the rides below show no segment.
+	var course_page: CourseDetail = start.find_children("*", "CourseDetail", true, false)[0]
 	await create_timer(1.0).timeout
+	_check(orqwa.save_segment(-1, "Wabern sprint", 400.0, 1000.0), "a segment marked")
+	course_page.refresh_records()
+	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("course-detail.png"))
 	print("saved course detail")
+	for segment: Dictionary in orqwa.segments():
+		var segment_id: int = segment["id"]
+		orqwa.remove_segment(segment_id)
+	course_page.refresh_records()
 	# The pencil beside the course's name: its name and video.
-	var course_page: CourseDetail = start.find_children("*", "CourseDetail", true, false)[0]
 	course_page.call("_open_editor")
 	await create_timer(0.5).timeout
 	root.get_texture().get_image().save_png(out_dir.path_join("course-edit.png"))

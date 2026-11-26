@@ -51,7 +51,11 @@ msgstr ""
 msgid "%d steps  ·  %s"
 msgstr ""
 
-#: app/scenes/ride_screen.gd
+#: app/scenes/history_screen.gd
+msgid "%s  ·  %.1f km from km %.1f"
+msgstr ""
+
+#: app/ui/climb_panel.gd
 msgid "%s  ·  climb %d of %d"
 msgstr ""
 
@@ -124,6 +128,10 @@ msgid "%s disconnected. Reconnecting…"
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
+msgid "%s does not follow this course."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
 msgid "%s does not follow this route."
 msgstr ""
 
@@ -179,7 +187,11 @@ msgstr ""
 msgid "%s was not found. It holds the course's slopes: put it next to the RLV file."
 msgstr ""
 
-#: app/scenes/ride_screen.gd
+#: app/ui/segment_panel.gd
+msgid "%s · %s to go"
+msgstr ""
+
+#: app/ui/climb_panel.gd
 msgid "%s · %s · %.1f%% to go"
 msgstr ""
 
@@ -203,7 +215,7 @@ msgstr ""
 msgid "%sft"
 msgstr ""
 
-#: app/scenes/ride_screen.gd
+#: app/ui/climb_panel.gd
 msgid "%sft ascent"
 msgstr ""
 
@@ -211,7 +223,7 @@ msgstr ""
 msgid "%sm"
 msgstr ""
 
-#: app/scenes/ride_screen.gd
+#: app/ui/climb_panel.gd
 msgid "%sm ascent"
 msgstr ""
 
@@ -259,6 +271,10 @@ msgstr ""
 msgid "A (right pod)"
 msgstr ""
 
+#: app/ui/segment_list.gd
+msgid "A GPX track of the stretch, such as a segment exported elsewhere"
+msgstr ""
+
 #: app/ui/graphics_settings.gd
 msgid "A balance of visual quality and performance."
 msgstr ""
@@ -281,6 +297,10 @@ msgstr ""
 
 #: app/ui/ghost_picker.gd
 msgid "A recorded activity…"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "A segment is at least %s long."
 msgstr ""
 
 #: app/ui/sound_settings.gd
@@ -357,6 +377,10 @@ msgstr ""
 
 #: app/ui/video_align_dialog.gd
 msgid "Add points where the footage stops or changes speed."
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Add segment"
 msgstr ""
 
 #: app/scenes/course_edit_dialog.gd
@@ -619,6 +643,10 @@ msgstr ""
 msgid "Benchmark graphics"
 msgstr ""
 
+#: app/ui/segment_panel.gd
+msgid "Best %s"
+msgstr ""
+
 #: app/ui/moment_lines.gd
 msgid "Best {duration} power: {power}."
 msgstr ""
@@ -711,7 +739,7 @@ msgstr ""
 msgid "Camera: %s"
 msgstr ""
 
-#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/group_joining_card.gd app/ui/group_next_step.gd app/ui/group_voice_dialog.gd app/ui/workout_editor.gd
+#: app/scenes/courses_tab.gd app/ui/graphics_benchmark.gd app/ui/group_connection_dialog.gd app/ui/group_joining_card.gd app/ui/group_next_step.gd app/ui/group_voice_dialog.gd app/ui/segment_list.gd app/ui/workout_editor.gd
 msgid "Cancel"
 msgstr ""
 
@@ -849,6 +877,10 @@ msgstr ""
 
 #: app/scenes/minimap.gd
 msgid "Click: jump there · corner: close view / whole route"
+msgstr ""
+
+#: app/scenes/course_detail.gd
+msgid "Click: set the segment's start, then its end"
 msgstr ""
 
 #: core/orqwa-upload/src/strava.rs
@@ -1165,6 +1197,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "Could not save the rider profile."
+msgstr ""
+
+#: core/orqwa-app/src/failure.rs
+msgid "Could not save the segment."
 msgstr ""
 
 #: core/orqwa-app/src/failure.rs
@@ -1699,6 +1735,10 @@ msgstr ""
 msgid "First ride on {course}."
 msgstr ""
 
+#: app/ui/segment_panel.gd
+msgid "First time on it"
+msgstr ""
+
 #: app/scenes/analysis_tab.gd
 msgid "Fitness"
 msgstr ""
@@ -1789,6 +1829,14 @@ msgstr ""
 
 #: app/ui/ride_options.gd
 msgid "Friends' voices; 0 mutes them"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "From"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "From GPX…"
 msgstr ""
 
 #: app/scenes/course_detail.gd
@@ -2795,6 +2843,10 @@ msgstr ""
 msgid "Optional sex for heart-rate calories. Separate from your avatar, and not needed with power."
 msgstr ""
 
+#: app/ui/segment_list.gd
+msgid "Or click the profile: first the start, then the end."
+msgstr ""
+
 #: app/scenes/group_rides_tab.gd
 msgid "Organizer"
 msgstr ""
@@ -3099,12 +3151,20 @@ msgstr ""
 msgid "Remove point"
 msgstr ""
 
+#: app/ui/segment_list.gd
+msgid "Remove the segment; its times stay with the rides"
+msgstr ""
+
 #: app/ui/workout_editor.gd
 msgid "Remove the step"
 msgstr ""
 
 #: app/scenes/course_edit_dialog.gd
 msgid "Remove video"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Rename or move the segment"
 msgstr ""
 
 #: app/scenes/history_screen.gd app/scenes/ride_summary_dialog.gd
@@ -3319,7 +3379,7 @@ msgstr ""
 msgid "Sat"
 msgstr ""
 
-#: app/scenes/course_edit_dialog.gd app/scenes/profile_dialog.gd app/ui/workout_editor.gd
+#: app/scenes/course_edit_dialog.gd app/scenes/profile_dialog.gd app/ui/segment_list.gd app/ui/workout_editor.gd
 msgid "Save"
 msgstr ""
 
@@ -3377,6 +3437,18 @@ msgstr ""
 
 #: app/ui/ride_options.gd
 msgid "Season"
+msgstr ""
+
+#: app/ui/segment_panel.gd
+msgid "Segment  ·  %s"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Segment name"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Segments"
 msgstr ""
 
 #: app/ui/group_invite_card.gd
@@ -3551,6 +3623,10 @@ msgstr ""
 msgid "Starting in %s seconds…"
 msgstr ""
 
+#: app/ui/segment_panel.gd
+msgid "Starts in %s"
+msgstr ""
+
 #: app/ui/workout_editor.gd
 msgid "Steady"
 msgstr ""
@@ -3693,6 +3769,10 @@ msgstr ""
 
 #: app/ui/moment_lines.gd
 msgid "That's {distance} on the clock already, great going!"
+msgstr ""
+
+#: app/ui/moment_lines.gd
+msgid "That's {name} behind you, in {time}!"
 msgstr ""
 
 #: app/ui/moment_lines.gd
@@ -3877,6 +3957,10 @@ msgstr ""
 
 #: app/scenes/history_screen.gd
 msgid "Times"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "To"
 msgstr ""
 
 #: core/orqwa-app/src/hud.rs
@@ -4343,6 +4427,10 @@ msgstr ""
 msgid "You've never ridden {course} before. Have fun exploring it!"
 msgstr ""
 
+#: app/ui/moment_lines.gd
+msgid "You've never ridden {name} faster, {gain} quicker than your best!"
+msgstr ""
+
 #: app/scenes/analysis_tab.gd app/scenes/history_screen.gd
 msgid "Your FTP is now %d W: zones and workouts follow it."
 msgstr ""
@@ -4471,6 +4559,10 @@ msgstr ""
 msgid "battery %s"
 msgstr ""
 
+#: app/ui/segment_list.gd
+msgid "best %s"
+msgstr ""
+
 #: app/translations/extra-msgids.txt
 msgid "chunks"
 msgstr ""
@@ -4493,6 +4585,10 @@ msgstr ""
 
 #: app/ui/workout_panel.gd
 msgid "for %d bpm  ·  now %s"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "from %s"
 msgstr ""
 
 #: app/scenes/history_screen.gd core/orqwa-app/src/hud.rs
@@ -4532,6 +4628,18 @@ msgid "{left} to go."
 msgstr ""
 
 #: app/ui/moment_lines.gd
+msgid "{name} in {time}, a personal record by {gain}."
+msgstr ""
+
+#: app/ui/moment_lines.gd
+msgid "{name} in {time}."
+msgstr ""
+
+#: app/ui/moment_lines.gd
+msgid "{name} is done in {time}. Nicely ridden!"
+msgstr ""
+
+#: app/ui/moment_lines.gd
 msgid "{power} for {duration} is a new best for you!"
 msgstr ""
 
@@ -4545,6 +4653,10 @@ msgstr ""
 
 #: app/ui/moment_lines.gd
 msgid "{time} on climb {n} is your best time up there yet!"
+msgstr ""
+
+#: app/ui/moment_lines.gd
+msgid "{time} on {name} is your fastest yet!"
 msgstr ""
 
 #: app/scenes/ride_screen.tscn

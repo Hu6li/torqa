@@ -16,6 +16,8 @@ const MOMENTS: Array[Dictionary] = [
 	{"kind": "step_held", "index": 3, "power_w": 262.0},
 	{"kind": "streak", "rides": 3},
 	{"kind": "week_plan", "rides": 3, "planned": 4},
+	{"kind": "segment_done", "name": "Wabern sprint", "elapsed_s": 75.0},
+	{"kind": "segment_record", "name": "Wabern sprint", "elapsed_s": 75.0, "gain_s": 4.0},
 ]
 
 var _failed: bool = false
@@ -65,6 +67,12 @@ func _lines() -> void:
 	for _i: int in range(4):
 		_check(MomentLines.line(MOMENTS[8], "casual", false, 7) == seeded, "a seed keeps the line")
 	_check(MomentLines.line({"kind": "unknown"}, "casual", false).is_empty(), "unknown kinds")
+	# The rider's own segments (R300) by the name they gave them.
+	_check(
+		_plain(MOMENTS[11], false) == "Wabern sprint in 1:15, a personal record by 0:04.",
+		"a segment record"
+	)
+	_check(MomentLines.figure(MOMENTS[10], false) == "1:15", "a segment's time")
 
 
 func _plain(moment: Dictionary, imperial: bool) -> String:

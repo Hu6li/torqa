@@ -3480,3 +3480,87 @@ msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden
 
 msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
 msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
+
+msgid "Segments"
+msgstr "Segmente"
+
+msgid "Add segment"
+msgstr "Segment hinzufügen"
+
+msgid "From GPX…"
+msgstr "Aus GPX …"
+
+msgid "A GPX track of the stretch, such as a segment exported elsewhere"
+msgstr "Ein GPX-Track des Abschnitts, etwa ein anderswo exportiertes Segment"
+
+msgid "Segment name"
+msgstr "Name des Segments"
+
+msgid "From"
+msgstr "Von"
+
+msgid "To"
+msgstr "Bis"
+
+msgid "Or click the profile: first the start, then the end."
+msgstr "Oder klicke ins Profil: zuerst auf den Start, dann auf das Ende."
+
+msgid "from %s"
+msgstr "ab %s"
+
+msgid "best %s"
+msgstr "Bestzeit %s"
+
+msgid "Rename or move the segment"
+msgstr "Segment umbenennen oder verschieben"
+
+msgid "Remove the segment; its times stay with the rides"
+msgstr "Segment entfernen; seine Zeiten bleiben bei den Fahrten"
+
+msgid "A segment is at least %s long."
+msgstr "Ein Segment ist mindestens %s lang."
+
+msgid "Click: set the segment's start, then its end"
+msgstr "Klicken: Start des Segments setzen, dann sein Ende"
+
+msgid "Segment  ·  %s"
+msgstr "Segment  ·  %s"
+
+msgid "Starts in %s"
+msgstr "Beginnt in %s"
+
+msgid "Best %s"
+msgstr "Bestzeit %s"
+
+msgid "%s · %s to go"
+msgstr "%s · noch %s"
+
+msgid "First time on it"
+msgstr "Zum ersten Mal hier"
+
+msgid "{name} is done in {time}. Nicely ridden!"
+msgstr "{name} geschafft in {time}. Schön gefahren!"
+
+msgid "That's {name} behind you, in {time}!"
+msgstr "{name} liegt hinter dir, in {time}!"
+
+msgid "{name} in {time}."
+msgstr "{name} in {time}."
+
+msgid "{time} on {name} is your fastest yet!"
+msgstr "{time} auf {name}, so schnell warst du da noch nie!"
+
+msgid "You've never ridden {name} faster, {gain} quicker than your best!"
+msgstr "So schnell bist du {name} noch nie gefahren, {gain} schneller als deine Bestzeit!"
+
+msgid "{name} in {time}, a personal record by {gain}."
+msgstr "{name} in {time}, persönliche Bestzeit um {gain}."
+
+msgid "%s  ·  %.1f km from km %.1f"
+msgstr "%s  ·  %.1f km ab km %.1f"
+
+msgid "Could not save the segment."
+msgstr "Das Segment konnte nicht gespeichert werden."
+
+msgid "%s does not follow this course."
+msgstr "%s folgt dieser Strecke nicht."
