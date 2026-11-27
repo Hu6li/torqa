@@ -245,6 +245,8 @@ Built in rideable steps:
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
+  - [x] Find the steeper part of a GPX rise when a gentle approach or finish brings its
+    overall grade below the climb cutoff (R300)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and

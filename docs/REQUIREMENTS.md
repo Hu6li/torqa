@@ -832,3 +832,9 @@ residency even when generation finishes the whole course before riding.
 | R297 | Extends R295 (2026-11-24): the maintainers can **replace the keys** that sign worlds without an ORQWA update, and worlds signed with a replaced key keep opening. A key or a world version can be **withdrawn**: ORQWA learns withdrawals with its releases and then refuses what was withdrawn. |
 | R298 | Extends R17 and R295 (2026-11-24): **premium video courses** come as signed world files, ridden like other video courses and sold like other worlds (R296). *(Later stage.)* |
 | R299 | Extends R282 (2026-11-24, [ADR 0042](adr/0042-world-files.md)): world files can use **extensions** for features later ORQWA versions add, as glTF does: an ORQWA that does not know an optional extension shows the world without it, and one that does not know a required extension asks for an update instead of opening the world. Adding an extension needs no new world format. |
+
+## Climb detection
+
+| ID | Requirement |
+|---|---|
+| R300 | Refines R27 (2026-11-27). On GPX courses, if a rise averages below 3%, ORQWA checks whether a shorter section qualifies after trimming gentle stretches from its ends. The shorter section must meet the same climb criteria as any other rise. |
