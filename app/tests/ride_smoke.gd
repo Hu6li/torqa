@@ -511,7 +511,8 @@ func _segments() -> void:
 
 
 ## A drag across the course page's profile marks the stretch, either way, following the
-## pointer; a press released where it went down stays a click (R300). Leaves 0–300 m marked.
+## pointer; it stays, and its ends or middle drag on until saved (R302). A press released where
+## it went down stays a click (R300). Leaves 0–300 m marked. 1 px is 1 m here.
 func _drag_on_profile(list: SegmentList) -> void:
 	var profile: ElevationProfile = ElevationProfile.new()
 	root.add_child(profile)
@@ -521,13 +522,33 @@ func _drag_on_profile(list: SegmentList) -> void:
 	profile.stretchable = true
 	profile.jump_requested.connect(list.pick)
 	profile.stretch_picked.connect(list.pick_stretch)
-	_press(profile, 100.0, true)
-	_move(profile, 103.0)
+	list.draft_changed.connect(profile.set_draft)
+	list.pick_stretch(0.0, 300.0)
+	_check(_draft(profile).is_equal_approx(Vector2(0.0, 300.0)), "the form's ends show")
+	# Outside it, a press starts a new stretch.
+	_press(profile, 350.0, true)
+	_move(profile, 353.0)
 	_check(_ends(list).is_equal_approx(Vector2(0.0, 300.0)), "a twitch is no drag")
+	_move(profile, 380.0)
+	_check(_ends(list).is_equal_approx(Vector2(350.0, 380.0)), "the ends follow the drag")
+	_press(profile, 390.0, false)
+	_check(_ends(list).is_equal_approx(Vector2(350.0, 390.0)), "released: %s" % _ends(list))
+	_check(_draft(profile).is_equal_approx(Vector2(350.0, 390.0)), "it stays once released")
+	# Its start, taken near it, drags on its own…
+	_press(profile, 352.0, true)
 	_move(profile, 200.0)
-	_check(_ends(list).is_equal_approx(Vector2(100.0, 200.0)), "the ends follow the drag")
-	_press(profile, 350.0, false)
-	_check(_ends(list).is_equal_approx(Vector2(100.0, 350.0)), "released: %s" % _ends(list))
+	_press(profile, 200.0, false)
+	_check(_ends(list).is_equal_approx(Vector2(200.0, 390.0)), "start moved: %s" % _ends(list))
+	# …its middle moves all of it, and no further than the course's start.
+	_press(profile, 300.0, true)
+	_move(profile, 250.0)
+	_press(profile, 250.0, false)
+	_check(_ends(list).is_equal_approx(Vector2(150.0, 340.0)), "shifted: %s" % _ends(list))
+	_press(profile, 200.0, true)
+	_move(profile, 0.0)
+	_press(profile, 0.0, false)
+	_check(_ends(list).is_equal_approx(Vector2(0.0, 190.0)), "at the start: %s" % _ends(list))
+	# A new one dragged backwards from beyond it.
 	_press(profile, 300.0, true)
 	_move(profile, 0.0)
 	_press(profile, 0.0, false)
@@ -543,7 +564,15 @@ func _drag_on_profile(list: SegmentList) -> void:
 	)
 	# The click was the start; put it back for the rest.
 	list.pick_stretch(0.0, 300.0)
+	profile.stretchable = false
+	_check(_draft(profile) == Vector2(-1.0, -1.0), "gone once the form closes")
 	profile.free()
+
+
+## The stretch the profile shows as marked; `(-1, -1)` when none.
+func _draft(profile: ElevationProfile) -> Vector2:
+	var draft: Array[float] = profile.get("_draft")
+	return Vector2(draft[0], draft[1]) if draft.size() == 2 else Vector2(-1.0, -1.0)
 
 
 ## The marked segment's ends in metres, as its form shows them.

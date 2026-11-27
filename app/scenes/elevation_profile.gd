@@ -7,12 +7,19 @@ extends Control
 
 ## A simulated ride's rider should jump to `distance_m` along the route (#53).
 signal jump_requested(distance_m: float)
-## A drag across the profile marks the stretch from `start_m` to `end_m` (R300); sent as the
-## drag goes, so whatever shows its ends follows the pointer.
+## A drag across the profile marks the stretch from `start_m` to `end_m` (R300), or moves an
+## end or the whole of the one marked; sent as the drag goes, so whatever shows its ends follows
+## the pointer.
 signal stretch_picked(start_m: float, end_m: float)
+
+## What a press on a stretchable profile takes hold of: a new stretch, an end of the one
+## marked, or all of it.
+enum Grab { NEW, START, END, WHOLE }
 
 ## How far the pointer moves before a press counts as a drag rather than a click.
 const DRAG_PX: float = 6.0
+## How near an end of the marked stretch a press takes that end.
+const HANDLE_PX: float = 8.0
 
 const PADDING: float = 2.0
 ## The smallest elevation range drawn, so flat routes do not look mountainous.
@@ -68,21 +75,34 @@ var jumpable: bool = false:
 	set(value):
 		jumpable = value
 		_press_x = -1.0
-		_stretch.clear()
+		_dragging = false
 		mouse_filter = MOUSE_FILTER_STOP if value else MOUSE_FILTER_IGNORE
 		tooltip_text = tr("Click: jump there") if value else ""
 		mouse_default_cursor_shape = CURSOR_POINTING_HAND if value else CURSOR_ARROW
 
 ## With [member jumpable], a drag marks a stretch ([signal stretch_picked]) and a click goes
-## out on release, as only then is it known not to be a drag.
-var stretchable: bool = false
+## out on release, as only then is it known not to be a drag. The stretch stays on the profile
+## until this ends, its ends and its middle to be dragged on.
+var stretchable: bool = false:
+	set(value):
+		stretchable = value
+		_press_x = -1.0
+		_dragging = false
+		if not value:
+			_draft.clear()
+		queue_redraw()
 
 ## `(distance m, elevation m)` points.
 var _profile: PackedVector2Array = PackedVector2Array()
 ## Where the left button went down while stretchable, negative when it is up.
 var _press_x: float = -1.0
-## The stretch being dragged, `[start m, end m]`, empty when none.
-var _stretch: Array[float] = []
+## The press has moved far enough to be a drag.
+var _dragging: bool = false
+var _grab: Grab = Grab.NEW
+## The marked stretch as it was when the button went down.
+var _grabbed: Array[float] = []
+## The stretch being marked, `[start m, end m]`, empty when none.
+var _draft: Array[float] = []
 var _rider_distance: float = 0.0
 var _ghost_distance: float = -1.0
 var _peers: Array[Dictionary] = []
@@ -206,11 +226,8 @@ func _draw() -> void:
 		draw_rect(Rect2(from, 0.0, to - from, 3.0), UiTheme.SEGMENT_COLOR)
 		draw_line(Vector2(from, 0.0), Vector2(from, bottom), ends, 1.0)
 		draw_line(Vector2(to, 0.0), Vector2(to, bottom), ends, 1.0)
-	if not _stretch.is_empty():
-		var from: float = _to_screen(Vector2(_stretch[0], 0.0)).x
-		var to: float = _to_screen(Vector2(_stretch[1], 0.0)).x
-		draw_rect(Rect2(from, 0.0, to - from, bottom), Color(UiTheme.SEGMENT_COLOR, 0.18))
-		draw_rect(Rect2(from, 0.0, to - from, 3.0), UiTheme.SEGMENT_COLOR)
+	if not _draft.is_empty():
+		_draw_draft(bottom)
 
 	for peer: Dictionary in _peers:
 		var id: int = peer["id"]
@@ -304,13 +321,36 @@ func _elevation_at(distance_m: float) -> float:
 	return _profile[_profile.size() - 1].y
 
 
+## Shows the stretch being marked, from `start_m` to `end_m` either way (as typed in, say),
+## until [member stretchable] ends.
+func set_draft(start_m: float, end_m: float) -> void:
+	_draft.assign([minf(start_m, end_m), maxf(start_m, end_m)])
+	queue_redraw()
+
+
+## The marked stretch, shaded, with a grip at each end to drag.
+func _draw_draft(bottom: float) -> void:
+	var from: float = _to_screen(Vector2(_draft[0], 0.0)).x
+	var to: float = _to_screen(Vector2(_draft[1], 0.0)).x
+	draw_rect(Rect2(from, 0.0, to - from, bottom), Color(UiTheme.SEGMENT_COLOR, 0.18))
+	draw_rect(Rect2(from, 0.0, to - from, 3.0), UiTheme.SEGMENT_COLOR)
+	for x: float in [from, to]:
+		draw_line(Vector2(x, 0.0), Vector2(x, bottom), UiTheme.SEGMENT_COLOR, 2.0)
+		draw_rect(Rect2(x - 3.0, bottom / 2.0 - 9.0, 6.0, 18.0), UiTheme.SEGMENT_COLOR)
+
+
 func _gui_input(event: InputEvent) -> void:
 	if not jumpable or _profile.size() < 2:
 		return
 	var motion: InputEventMouseMotion = event as InputEventMouseMotion
-	if motion != null and _press_x >= 0.0:
-		if _stretch.is_empty() and absf(motion.position.x - _press_x) < DRAG_PX:
+	if motion != null:
+		if _press_x < 0.0:
+			if stretchable:
+				mouse_default_cursor_shape = _cursor(_grab_at(motion.position.x))
 			return
+		if not _dragging and absf(motion.position.x - _press_x) < DRAG_PX:
+			return
+		_dragging = true
 		_drag_to(motion.position.x)
 		accept_event()
 		return
@@ -324,24 +364,62 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	if click.pressed:
 		_press_x = click.position.x
+		_dragging = false
+		_grab = _grab_at(_press_x)
+		_grabbed = _draft.duplicate()
 	elif _press_x >= 0.0:
-		if _stretch.is_empty():
-			jump_requested.emit(_distance_at(_press_x))
-		else:
+		if _dragging:
 			_drag_to(click.position.x)
+		else:
+			jump_requested.emit(_distance_at(_press_x))
 		_press_x = -1.0
-		_stretch.clear()
-		queue_redraw()
+		_dragging = false
 	accept_event()
 
 
-## The drag from where the button went down to `x`, either way, as a stretch.
+## What a press at `x` takes hold of; on a short stretch the nearer end.
+func _grab_at(x: float) -> Grab:
+	if _draft.is_empty():
+		return Grab.NEW
+	var from: float = _to_screen(Vector2(_draft[0], 0.0)).x
+	var to: float = _to_screen(Vector2(_draft[1], 0.0)).x
+	if absf(x - from) <= HANDLE_PX and absf(x - from) <= absf(x - to):
+		return Grab.START
+	if absf(x - to) <= HANDLE_PX:
+		return Grab.END
+	if x > from and x < to:
+		return Grab.WHOLE
+	return Grab.NEW
+
+
+func _cursor(grab: Grab) -> CursorShape:
+	match grab:
+		Grab.START, Grab.END:
+			return CURSOR_HSIZE
+		Grab.WHOLE:
+			return CURSOR_MOVE
+	return CURSOR_POINTING_HAND
+
+
+## The drag from where the button went down to `x`: a new stretch either way, an end of the
+## marked one moved (past the other, they swap), or all of it moved within the course.
 func _drag_to(x: float) -> void:
-	var a: float = _distance_at(_press_x)
-	var b: float = _distance_at(x)
-	_stretch.assign([minf(a, b), maxf(a, b)])
-	queue_redraw()
-	stretch_picked.emit(_stretch[0], _stretch[1])
+	var at: float = _distance_at(x)
+	var start: float = _distance_at(_press_x)
+	var end: float = at
+	match _grab:
+		Grab.START:
+			start = at
+			end = _grabbed[1]
+		Grab.END:
+			start = _grabbed[0]
+		Grab.WHOLE:
+			var length: float = _profile[_profile.size() - 1].x
+			var shift: float = clampf(at - start, -_grabbed[0], length - _grabbed[1])
+			start = _grabbed[0] + shift
+			end = _grabbed[1] + shift
+	set_draft(start, end)
+	stretch_picked.emit(_draft[0], _draft[1])
 
 
 func _distance_at(x: float) -> float:

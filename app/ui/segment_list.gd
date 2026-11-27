@@ -11,6 +11,8 @@ extends VBoxContainer
 signal changed(segments: Array)
 ## While a segment is marked, clicks on the profile set its start, then its end ([method pick]).
 signal picking_changed(picking: bool)
+## The stretch being marked changed, however it was set: the profile shows it.
+signal draft_changed(start_m: float, end_m: float)
 
 ## As in the core: shorter is no stretch to time, longer names do not fit the ride's panel.
 const MIN_LENGTH_M: float = 50.0
@@ -127,7 +129,7 @@ func _build_form() -> void:
 		ends.add_child(spin)
 	_form.add_child(ends)
 	var hint: Label = Label.new()
-	hint.text = tr("Or drag across the profile from the start to the end, or click it twice.")
+	hint.text = tr("Or drag across the profile, then drag its ends or middle to adjust it.")
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", UiTheme.MUTED)
@@ -232,6 +234,7 @@ func _close_form() -> void:
 
 ## Save waits for a name and a stretch long enough to time.
 func _check() -> void:
+	draft_changed.emit(_to_meters(_start.value), _to_meters(_end.value))
 	var length: float = _to_meters(_end.value) - _to_meters(_start.value)
 	_save.disabled = _name.text.strip_edges().is_empty() or length < MIN_LENGTH_M
 	_save.tooltip_text = (

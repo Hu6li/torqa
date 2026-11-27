@@ -44,9 +44,10 @@ const CLIMB_COLORS: Dictionary[String, Color] = {
 }
 ## Ghost riders and pacers (R20) on the road, the map and the profile.
 const GHOST_COLOR: Color = Color(0.98, 0.55, 0.2)
-## The rider's own segments (R300) on the profile and in the ride's panel: teal, apart from the
-## climb categories, the ghost and the accent.
-const SEGMENT_COLOR: Color = Color(0.2, 0.85, 0.8)
+## The rider's own segments (R300) on the profile, the maps and in the ride's panel: a light tint
+## of the accent, of the palette but apart from the climb categories and the ghost. On the maps
+## it sits over the accent-blue route, so it is drawn wider there, on a dark outline.
+const SEGMENT_COLOR: Color = Color(0.6, 0.84, 0.99)
 # i18n-end
 const POWER_COLOR: Color = Color(0.04, 0.61, 0.96)
 const HEART_RATE_COLOR: Color = Color(0.95, 0.33, 0.38)

@@ -257,6 +257,7 @@ func _init() -> void:
 	_segments.picking_changed.connect(_on_segment_picking)
 	_profile.jump_requested.connect(_segments.pick)
 	_profile.stretch_picked.connect(_segments.pick_stretch)
+	_segments.draft_changed.connect(_profile.set_draft)
 	left.add_child(_segments)
 	var left_scroll: ScrollContainer = UiTheme.scrolling(left)
 	left_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -522,7 +523,9 @@ func _on_segment_picking(picking: bool) -> void:
 	_profile.jumpable = picking
 	_profile.stretchable = picking
 	if picking:
-		_profile.tooltip_text = tr("Drag from the segment's start to its end, or click both")
+		_profile.tooltip_text = tr(
+			"Drag across for the segment, then its ends or middle; or click both ends"
+		)
 
 
 func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:

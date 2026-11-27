@@ -64,7 +64,7 @@ static func _course_page(main: Control, out: String) -> void:
 	var field: LineEdit = list.get("_name")
 	field.text = "Ligerz climb"
 	field.text_changed.emit(field.text)
-	# Dragged across the profile from 6.0 to 8.3 km (R302), still held for the picture.
+	# Dragged across the profile from 6.0 to 8.3 km and let go (R302): it stays, with grips.
 	var profile: ElevationProfile = page.get("_profile")
 	var points: PackedVector2Array = profile.get("_profile")
 	var course_m: float = points[points.size() - 1].x
@@ -76,12 +76,12 @@ static func _course_page(main: Control, out: String) -> void:
 	var drag: InputEventMouseMotion = InputEventMouseMotion.new()
 	drag.position = Vector2(8300.0 / course_m * profile.size.x, press.position.y)
 	profile.call("_gui_input", drag)
-	Input.warp_mouse(profile.get_global_transform() * drag.position)
-	await tree.create_timer(1.2).timeout
-	_save(main, out, "course-marking")
 	press.pressed = false
 	press.position = drag.position
 	profile.call("_gui_input", press)
+	Input.warp_mouse(profile.get_global_transform() * drag.position)
+	await tree.create_timer(1.2).timeout
+	_save(main, out, "course-marking")
 	list.call("_close_form")
 	_forget_segments(app)
 	page.refresh_records()

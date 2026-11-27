@@ -174,6 +174,7 @@ func _draw_map() -> void:
 		_map.draw_polyline(track, Color(0, 0, 0, 0.35), 6.0, true)
 		_map.draw_polyline(track, TRACK_COLOR, 3.5, true)
 		for stretch: PackedVector2Array in _segments:
+			_map.draw_polyline(_map_scale * stretch, Color(0, 0, 0, 0.5), 8.0, true)
 			_map.draw_polyline(_map_scale * stretch, UiTheme.SEGMENT_COLOR, 4.5, true)
 		_map.draw_circle(track[0], 5.0, START_COLOR)
 		_map.draw_circle(track[track.size() - 1], 5.0, FINISH_COLOR)

@@ -110,7 +110,7 @@ func _draw_lines() -> void:
 		for point: Vector2 in stretch:
 			points.append(_card_position(point, _frame))
 		if points.size() >= 2 and points[0].is_finite():
-			# Wider than the blue route under it, or teal beside blue is easily missed.
+			# The light blue over the blue route reads by its dark outline and its width.
 			_lines.draw_polyline(points, Color(0, 0, 0, 0.6), 10.0, true)
 			_lines.draw_polyline(points, UiTheme.SEGMENT_COLOR, 5.5, true)
 	var marker: Vector2 = _marker_screen_position()
