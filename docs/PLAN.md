@@ -245,18 +245,20 @@ Built in rideable steps:
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
-  - [x] The rider's own segments (R300): marked on a course's page by typed or clicked ends,
+  - [x] Find the steeper part of a GPX rise when a gentle approach or finish brings its
+    overall grade below the climb cutoff (R300)
+  - [x] The rider's own segments (R302): marked on a course's page by typed or clicked ends,
     or from a GPX track matched forward along the course (`orqwa_routes::segments`); stored per
     rider and route; timed like climbs with a HUD panel from 500 m ahead, moments, records
     against the rider's best and the history's times (in the rider's units); marked on the
     profile, the course page's map and the ride's minimap; no banners in the world (R44/R89);
     `SCREENSHOT_SEGMENTS_ONLY=1 scripts/screenshots.sh` renders them all
   - [x] A card with the chime about 15 s before a segment starts, at the rider's speed and
-    between 500 m and 50 m ahead, showing the distance (R301)
+    between 500 m and 50 m ahead, showing the distance (R303)
   - [x] Segments marked by dragging across the profile; the quick summary lists the ride's
-    segment times, which simulated and assisted rides keep without setting records (R302)
+    segment times, which simulated and assisted rides keep without setting records (R304)
   - [x] The marked stretch stays on the profile, its ends and middle draggable until saved;
-    segments in a light tint of the accent blue (R303)
+    segments in a light tint of the accent blue (R305)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and
@@ -345,6 +347,7 @@ Built in rideable steps:
     rider gave them behind a pen like a shifter's, showing the gear and the pause under the
     ORQWA logo; off until turned on under Devices, a secret token in its address, a new
     address to lock out those paired before; **not yet tried on a real phone or tablet**
+  - [x] Assign camera orbit and distance to remote buttons for 3D rides (R301, #684).
   - [x] A TV remote between rides (R87): a pad of arrows, OK and Back goes through ORQWA's
     screens to start a course or workout, a held Finish & save ends a ride, and a focus ring
     shows where keyboard and remote are (Escape goes back too)

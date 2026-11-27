@@ -1,4 +1,4 @@
-//! The rider's own segments of a course (R300): stretches such as a sprint or a favourite climb
+//! The rider's own segments of a course (R302): stretches such as a sprint or a favourite climb
 //! that they mark on the course or bring as a GPX track, timed on every ride like the climbs,
 //! with their best time to beat.
 
@@ -19,7 +19,7 @@ use crate::{ActiveRide, App, AppError};
 /// How far ahead of a segment the ride screen starts showing it, so the rider can get ready.
 const HERALD: Meters = Meters(500.0);
 /// How long before a segment's start, at the rider's speed, the ride tells them it is coming
-/// (R301): time to shift and wind up whatever the speed, where a fixed distance would come a
+/// (R303): time to shift and wind up whatever the speed, where a fixed distance would come a
 /// minute early on a climb and late on a fast flat road…
 const CALL_AHEAD: Duration = Duration::from_secs(15);
 /// …but no later than this far before it, for a rider going slowly or standing still.

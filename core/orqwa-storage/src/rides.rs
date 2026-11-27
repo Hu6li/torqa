@@ -52,7 +52,7 @@ pub struct RideRecord {
     pub route_time: Option<Duration>,
     /// Times on the route's climbs that the rider completed.
     pub climbs: Vec<ClimbTime>,
-    /// Times on the rider's own segments of the route that they completed (R300).
+    /// Times on the rider's own segments of the route that they completed (R302).
     pub segments: Vec<SegmentTime>,
     /// The name the rider gave the ride (R50); `None` shows the route and date.
     pub name: Option<String>,
@@ -106,7 +106,7 @@ impl ClimbTime {
     }
 }
 
-/// The time on one of the rider's segments of a ride (R300).
+/// The time on one of the rider's segments of a ride (R302).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SegmentTime {
     /// The segment's name when it was ridden.

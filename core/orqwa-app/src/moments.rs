@@ -51,14 +51,14 @@ pub enum Moment {
         /// How much faster than the best time before.
         gain: Duration,
     },
-    /// The rider finished one of their segments (R300), not faster than before.
+    /// The rider finished one of their segments (R302), not faster than before.
     SegmentDone {
         /// The segment's name.
         name: String,
         /// Time from its start to its end.
         elapsed: Duration,
     },
-    /// The rider finished one of their segments faster than ever before (R300).
+    /// The rider finished one of their segments faster than ever before (R302).
     SegmentRecord {
         /// The segment's name.
         name: String,
@@ -67,7 +67,7 @@ pub enum Moment {
         /// How much faster than the best time before.
         gain: Duration,
     },
-    /// One of the rider's segments starts shortly, so they can get ready (R301).
+    /// One of the rider's segments starts shortly, so they can get ready (R303).
     SegmentAhead {
         /// The segment's name.
         name: String,

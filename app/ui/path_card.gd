@@ -19,7 +19,7 @@ var _map: TextureRect = TextureRect.new()
 var _lines: Control = Control.new()
 ## A saved course position in route coordinates and its prepared map frame, if any.
 var _marker: Dictionary = {}
-## The rider's segments' stretches (R300) in route coordinates, and the map picture's frame.
+## The rider's segments' stretches (R302) in route coordinates, and the map picture's frame.
 var _segments: Array[PackedVector2Array] = []
 var _frame: Rect2 = Rect2()
 
@@ -74,7 +74,7 @@ func set_marker(marker: Dictionary) -> void:
 	_lines.queue_redraw()
 
 
-## Marks the rider's segments (`OrqwaApp.segments()`, R300) in their colour; `frame` places
+## Marks the rider's segments (`OrqwaApp.segments()`, R302) in their colour; `frame` places
 ## them on the map picture (`OrqwaApp.course_position()`'s), empty where there is none.
 func set_segments(segments: Array, frame: Rect2) -> void:
 	_segments.clear()

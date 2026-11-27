@@ -397,9 +397,42 @@ mod tests {
                 && state["gears"] == before.of
         });
 
+        let camera_actions = [
+            ("camera_left", Control::CameraLeft),
+            ("camera_right", Control::CameraRight),
+            ("camera_nearer", Control::CameraNearer),
+            ("camera_further", Control::CameraFurther),
+        ];
+        let mut map = app.button_map(ControllerModel::PhoneRemote);
+        for (slot, (name, control)) in (1..).zip(camera_actions) {
+            let action = ButtonAction::from_name(name);
+            assert_eq!(action, Some(ButtonAction::Control(control)));
+            map.assign(slot, Press::Short, action);
+        }
+        app.set_button_map(ControllerModel::PhoneRemote, map)
+            .unwrap();
+
         app.set_paused(true);
         app.update(Duration::from_millis(16));
-        wait_for(&mut phone, |state| state["paused"] == true);
+        wait_for(&mut phone, |state| {
+            state["paused"] == true
+                && camera_actions
+                    .iter()
+                    .enumerate()
+                    .all(|(slot, (name, _))| state["buttons"][slot] == *name)
+        });
+
+        for (slot, (_, control)) in (1..).zip(camera_actions) {
+            assert_eq!(
+                press(port, &token, &slot.to_string()),
+                "HTTP/1.1 204 No Content"
+            );
+            assert!(
+                app.update(Duration::from_millis(16))
+                    .contains(&AppEvent::Control(control)),
+                "the assigned button asks for {control:?} while paused"
+            );
+        }
 
         assert_eq!(post(port, &token, "finish"), "HTTP/1.1 204 No Content");
         let events = app.update(Duration::from_millis(16));

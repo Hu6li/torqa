@@ -292,7 +292,7 @@ pub struct RouteRecords {
     pub route: Option<Duration>,
     /// Fastest time per climb, in the order of [`Route::climbs`].
     pub climbs: Vec<Option<Duration>>,
-    /// The rider's own segments of the route with their fastest times (R300).
+    /// The rider's own segments of the route with their fastest times (R302).
     pub segments: Vec<segments::SegmentBest>,
     /// Whether the rider has ridden the route before, finished or not.
     pub ridden: bool,

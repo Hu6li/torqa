@@ -86,6 +86,21 @@ impl Climb {
 /// The climbs along evenly spaced, smoothed route points, in order.
 #[must_use]
 pub fn detect(points: &[RoutePoint]) -> Vec<Climb> {
+    detect_with(points, qualify)
+}
+
+/// Climbs on a GPX course, including sustained sections of rises that are too gentle overall.
+#[must_use]
+pub(crate) fn detect_with_trimming(points: &[RoutePoint]) -> Vec<Climb> {
+    detect_with(points, |points, foot, top| {
+        qualify(points, foot, top).or_else(|| qualify_trimmed(points, foot, top))
+    })
+}
+
+fn detect_with(
+    points: &[RoutePoint],
+    qualify: impl Fn(&[RoutePoint], usize, usize) -> Option<Climb>,
+) -> Vec<Climb> {
     let elevation = |i: usize| points[i].elevation.0;
     let mut climbs = Vec::new();
     // The foot moves along flat ground, so a flat approach is not part of the climb.
@@ -118,6 +133,26 @@ pub fn detect(points: &[RoutePoint]) -> Vec<Climb> {
         climbs.extend(qualify(points, foot, high));
     }
     climbs
+}
+
+fn qualify_trimmed(points: &[RoutePoint], foot: usize, top: usize) -> Option<Climb> {
+    let rise = &points[foot..=top];
+    let gain = points[top].elevation.0 - points[foot].elevation.0;
+    if gain * 100.0 < MIN_SCORE {
+        return None;
+    }
+
+    // A sustained grade at each edge keeps a gentle approach or finish from diluting the climb.
+    let mut uphill = (0..rise.len()).filter_map(|start| {
+        let from = rise[start];
+        let end = rise.partition_point(|point| point.distance.0 < from.distance.0 + MIN_LENGTH_M);
+        let to = rise.get(end)?;
+        let grade = (to.elevation.0 - from.elevation.0) / (to.distance.0 - from.distance.0) * 100.0;
+        (grade >= MIN_GRADE).then_some((start, end))
+    });
+    let (start, end) = uphill.next()?;
+    let end = uphill.next_back().map_or(end, |(_, end)| end);
+    qualify(rise, start, end)
 }
 
 fn qualify(points: &[RoutePoint], foot: usize, top: usize) -> Option<Climb> {
@@ -193,6 +228,37 @@ mod tests {
     fn ignores_gentle_and_short_rises() {
         assert_eq!(detect(&route(&[(3000.0, 2.0)])), []);
         assert_eq!(detect(&route(&[(200.0, 10.0)])), []);
+    }
+
+    #[test]
+    fn finds_the_steep_finish_after_a_long_gentle_approach() {
+        let points = route(&[(19_400.0, 1.8), (2000.0, 11.0), (3000.0, -9.0)]);
+
+        let climbs = detect_with_trimming(&points);
+
+        assert_eq!(climbs.len(), 1, "{climbs:?}");
+        assert!((19_100.0..=19_400.0).contains(&climbs[0].start.0));
+        assert!((climbs[0].end.0 - 21_400.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn finds_the_steep_start_before_a_long_gentle_finish() {
+        let points = route(&[(5000.0, 6.0), (15_000.0, 1.5)]);
+
+        let climbs = detect_with_trimming(&points);
+
+        assert_eq!(climbs.len(), 1, "{climbs:?}");
+        assert!(climbs[0].start.0.abs() < 1e-6);
+        assert!((5000.0..=5300.0).contains(&climbs[0].end.0));
+    }
+
+    #[test]
+    fn trimming_keeps_qualifying_climbs_and_ignores_gentle_rises() {
+        let climb = route(&[(1000.0, 2.0), (1000.0, 7.0)]);
+        let gentle = route(&[(20_000.0, 2.0)]);
+
+        assert_eq!(detect_with_trimming(&climb), detect(&climb));
+        assert_eq!(detect_with_trimming(&gentle), []);
     }
 
     #[test]

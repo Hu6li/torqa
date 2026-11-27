@@ -57,9 +57,7 @@ Gestel, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA
 
 - **[3D routes](https://github.com/ORQWA/ORQWA/wiki/Courses#import-a-course):** Import a GPX route
   and ride through scenery based on real terrain and OpenStreetMap.
-- **[Authored worlds](docs/world-files.md):** Ride complete offline scenery with its own
-  materials and light, continuous rider lanes through bends, and optional close scenery on Ultra.
-  Switch to another course in the same session; its starting surroundings load before riding.
+- **[Authored worlds](https://orqwa.github.io/download/#sample-world):** Ride hand-built worlds, fully offline.
 - **[Video rides](https://github.com/ORQWA/ORQWA/wiki/Video-courses):** Ride along with a video
   that plays at your speed.
 - **[Continue another day](https://github.com/ORQWA/ORQWA/wiki/Courses#continue-another-day):**
@@ -95,6 +93,13 @@ while signed in to GitHub. See [build details](docs/development.md#builds) for h
 Follow the [getting-started guide](https://github.com/ORQWA/ORQWA/wiki/Getting-started) to set
 up ORQWA and start riding. The [usage wiki](https://github.com/ORQWA/ORQWA/wiki) has guides
 for devices, courses, workouts and more.
+
+## Support ORQWA
+
+ORQWA is free and built in spare time. If you enjoy it, you can support it here:
+
+<!-- <a href="https://github.com/sponsors/ORQWA"><img src="docs/images/sponsor-button.svg" alt="Sponsor on GitHub" height="40"></a> -->
+<a href="https://buymeacoffee.com/boss.m8"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="40"></a>
 
 ## Contributing
 

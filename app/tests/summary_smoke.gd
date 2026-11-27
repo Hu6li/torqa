@@ -80,7 +80,7 @@ func _run() -> void:
 		"assisted rides are labelled and keep real power records"
 	)
 	record_ride["assisted"] = false
-	# Segment times (R300), as a card told at the finish may have gone with the ride screen.
+	# Segment times (R302), as a card told at the finish may have gone with the ride screen.
 	record_ride["simulated"] = true
 	record_ride["segments"] = [
 		{"name": "Wabern sprint", "time_s": 41.0, "record": false},

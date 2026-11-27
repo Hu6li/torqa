@@ -1,7 +1,7 @@
 class_name CourseDetail
 extends HBoxContainer
 ## One course (R40): name, key figures with the rider's estimated time (R66), path card,
-## elevation profile with climbs and the rider's records on it and their own segments (R300),
+## elevation profile with climbs and the rider's records on it and their own segments (R302),
 ## next to the ride options (R48) and who to race (R20) → Ride. The pencil beside the name
 ## renames the course and adds, aligns or removes its video (R17); the bin beside it deletes the
 ## course. Opening the page loads only the route, a spinner turning until it is in; the 3D world
@@ -523,9 +523,7 @@ func _on_segment_picking(picking: bool) -> void:
 	_profile.jumpable = picking
 	_profile.stretchable = picking
 	if picking:
-		_profile.tooltip_text = tr(
-			"Drag across for the segment, then its ends or middle; or click both ends"
-		)
+		_profile.tooltip_text = _segments.profile_hint()
 
 
 func _on_loading_progress(step: String, unit: String, done: int, total: int) -> void:

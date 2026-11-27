@@ -74,7 +74,7 @@ fn pick<T>(
     picked
 }
 
-/// The stretch of track from `start` to `end` along the route (a rider's segment, R300), on the
+/// The stretch of track from `start` to `end` along the route (a rider's segment, R302), on the
 /// same grid as [`track`] and as finely as `max_points` would draw the whole route, beginning
 /// and ending exactly at those distances.
 #[must_use]

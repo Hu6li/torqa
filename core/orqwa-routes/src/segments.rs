@@ -1,4 +1,4 @@
-//! Where a stretch ridden elsewhere lies on a route (R300): a segment the rider brings as a GPX
+//! Where a stretch ridden elsewhere lies on a route (R302): a segment the rider brings as a GPX
 //! track becomes the distances of its start and end along the course.
 
 use orqwa_domain::units::Meters;

@@ -527,10 +527,8 @@ impl OrqwaApp {
             .is_some_and(|app| app.fetch_planned_workouts(&day.to_string()))
     }
 
-    /// A shifter's button asked for a ride control (#139), to be carried out as its key is:
-    /// `next_camera`, `overlay`, the music's `play_pause`, `next` and `previous`, `pause`,
-    /// `difficulty_up` and `_down`, the workout's `intensity_up` and `_down`, `skip_step`, or
-    /// `finish_ride`.
+    /// A shifter or phone remote asked for a ride control by its button action name.
+    /// Music track controls use `next` and `previous`.
     #[signal]
     fn control_requested(control: GString);
 
@@ -3475,7 +3473,7 @@ impl OrqwaApp {
     /// route also
     /// `{remaining_m, grade, elevation_m, x, y, rider_x, rider_y, heading, curvature, ghost, climb,
     /// segment}`; sensor values and what derives from them are `null` when unknown. Empty when
-    /// not riding. `segment` is the rider's own segment they are on or coming up to (R300):
+    /// not riding. `segment` is the rider's own segment they are on or coming up to (R302):
     /// `{name, length_m, ahead_m, ridden_m, elapsed_s, best_s}`, `ahead_m` `null` once on it.
     /// `workout` is `{target_power_w, target_heart_rate, intensity_pct, paused, progress}` in a
     /// workout, else `null`: the power `null` in a free step, the heart rate `null` but in a
@@ -3688,7 +3686,7 @@ impl OrqwaApp {
         }
     }
 
-    /// The active rider's segments of the loaded course (R300), as added: `[{id, name, start_m,
+    /// The active rider's segments of the loaded course (R302), as added: `[{id, name, start_m,
     /// end_m, length_m, best_s, track}]`; `best_s` is `null` before a ride on it, and `track`
     /// is its stretch of road on the grid of `track()`, for the maps.
     #[func]
@@ -4741,18 +4739,9 @@ impl OrqwaApp {
 /// How the front end calls `control`: the music's as `control_music` does.
 fn control_name(control: Control) -> &'static str {
     match control {
-        Control::NextCamera => "next_camera",
-        Control::Overlay => "overlay",
-        Control::PlayPause => "play_pause",
         Control::NextTrack => "next",
         Control::PreviousTrack => "previous",
-        Control::Pause => "pause",
-        Control::DifficultyUp => "difficulty_up",
-        Control::DifficultyDown => "difficulty_down",
-        Control::IntensityUp => "intensity_up",
-        Control::IntensityDown => "intensity_down",
-        Control::SkipStep => "skip_step",
-        Control::FinishRide => "finish_ride",
+        _ => ButtonAction::Control(control).name(),
     }
 }
 
@@ -5173,7 +5162,7 @@ fn segment_state(s: &orqwa_app::segments::SegmentProgress) -> Variant {
     .to_variant()
 }
 
-/// A history entry's times on the rider's segments (R300): `[{name, start_m, length_m, time_s,
+/// A history entry's times on the rider's segments (R302): `[{name, start_m, length_m, time_s,
 /// avg_power, record}]`.
 fn segment_times(entry: &orqwa_app::HistoryEntry) -> VarArray {
     let mut array = VarArray::new();

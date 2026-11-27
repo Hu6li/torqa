@@ -470,7 +470,7 @@ func _run() -> void:
 	while not prepared[0] and Time.get_ticks_msec() < until:
 		await process_frame
 	_check(prepared[0], "course prepared")
-	# The prepared course opens on its detail page, with a segment of the rider's own (R300).
+	# The prepared course opens on its detail page, with a segment of the rider's own (R302).
 	var course_page: CourseDetail = start.find_children("*", "CourseDetail", true, false)[0]
 	await create_timer(1.0).timeout
 	await SegmentScreenshots.course_detail(_main, course_page, out_dir)

@@ -1,5 +1,5 @@
 //! Storage for ORQWA: recorded rides as FIT activities (R28), course files (R32–R35), rider
-//! profiles (R22), their segments of courses (R300) and their accounts on training platforms
+//! profiles (R22), their segments of courses (R302) and their accounts on training platforms
 //! (R29), the history index that
 //! spares reading every ride's metadata (R79) and the 3D worlds a computer keeps (R101).
 

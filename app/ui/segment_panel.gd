@@ -1,6 +1,6 @@
 class_name SegmentPanel
 extends PanelContainer
-## The rider's own segment during a ride (R300), on the HUD only (no banners in the world,
+## The rider's own segment during a ride (R302), on the HUD only (no banners in the world,
 ## R44/R89): from a little ahead its name and how far to its start; on it the time so far, the
 ## distance left, and against the rider's best, how far ahead or behind they are at this point
 ## if they rode it evenly then. Hidden away from segments.

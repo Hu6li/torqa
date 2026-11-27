@@ -76,7 +76,7 @@ func _run() -> void:
 	_check(_orqwa.start_ride(50.0, false, {"kind": "none"}), "ride started")
 	await create_timer(2.0).timeout
 	var state: Dictionary = _orqwa.ride_state()
-	# On the segment from the start, timed on the HUD (R300).
+	# On the segment from the start, timed on the HUD (R302).
 	var on_segment: Variant = state.get("segment")
 	var segment_state: Dictionary = on_segment if on_segment is Dictionary else {}
 	var segment_name: String = segment_state.get("name", "")
@@ -456,7 +456,7 @@ func _wait_for(sig: Signal) -> Array:
 	return result
 
 
-## The rider marks a segment of the loaded course on its page (R300): typed in or clicked on
+## The rider marks a segment of the loaded course on its page (R302): typed in or clicked on
 ## the profile, listed with its length, renamed, and only saved when long enough to time.
 func _segments() -> void:
 	var list: SegmentList = SegmentList.new()
@@ -511,8 +511,8 @@ func _segments() -> void:
 
 
 ## A drag across the course page's profile marks the stretch, either way, following the
-## pointer; it stays, and its ends or middle drag on until saved (R302). A press released where
-## it went down stays a click (R300). Leaves 0–300 m marked. 1 px is 1 m here.
+## pointer; it stays, and its ends or middle drag on until saved (R304). A press released where
+## it went down stays a click (R302). Leaves 0–300 m marked. 1 px is 1 m here.
 func _drag_on_profile(list: SegmentList) -> void:
 	var profile: ElevationProfile = ElevationProfile.new()
 	root.add_child(profile)

@@ -7,7 +7,7 @@ extends Control
 
 ## A simulated ride's rider should jump to `distance_m` along the route (#53).
 signal jump_requested(distance_m: float)
-## A drag across the profile marks the stretch from `start_m` to `end_m` (R300), or moves an
+## A drag across the profile marks the stretch from `start_m` to `end_m` (R302), or moves an
 ## end or the whole of the one marked; sent as the drag goes, so whatever shows its ends follows
 ## the pointer.
 signal stretch_picked(start_m: float, end_m: float)
@@ -108,7 +108,7 @@ var _ghost_distance: float = -1.0
 var _peers: Array[Dictionary] = []
 ## `[start m, end m, colour]` per climb.
 var _climbs: Array[Array] = []
-## `[start m, end m]` per segment of the rider's (R300).
+## `[start m, end m]` per segment of the rider's (R302).
 var _segments: Array[Array] = []
 var _min_elevation: float = 0.0
 var _max_elevation: float = 0.0
@@ -149,7 +149,7 @@ func set_climbs(climbs: Array) -> void:
 	queue_redraw()
 
 
-## Marks the rider's segments (`OrqwaApp.segments()`, R300) with a band along the top and their
+## Marks the rider's segments (`OrqwaApp.segments()`, R302) with a band along the top and their
 ## ends with faint lines, so they read apart from the climbs at the bottom.
 func set_segments(segments: Array) -> void:
 	_segments.clear()

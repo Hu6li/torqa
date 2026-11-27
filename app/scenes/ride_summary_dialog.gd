@@ -1,7 +1,7 @@
 class_name RideSummaryDialog
 extends AcceptDialog
 ## A quick summary over the finished ride (R113), with a line on its place in the rider's week
-## (R124) and its times on the rider's segments (R300), which a card at the finish may not have
+## (R124) and its times on the rider's segments (R302), which a card at the finish may not have
 ## had time to tell; charts and uploads stay in its details.
 
 signal closed

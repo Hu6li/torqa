@@ -21,6 +21,14 @@ pub enum Shift {
 pub enum Control {
     /// The next camera.
     NextCamera,
+    /// Moves the camera around the rider to the left.
+    CameraLeft,
+    /// Moves the camera around the rider to the right.
+    CameraRight,
+    /// Moves the camera closer to the rider.
+    CameraNearer,
+    /// Moves the camera farther from the rider.
+    CameraFurther,
     /// Into the overlay, or back out of it.
     Overlay,
     /// Plays or pauses the rider's music.
@@ -111,12 +119,16 @@ pub enum ButtonAction {
 
 impl ButtonAction {
     /// Every action a button can be given, in the order to offer them.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 20] = [
         Self::ShiftUp,
         Self::ShiftDown,
         Self::ShiftUpTwo,
         Self::ShiftDownTwo,
         Self::Control(Control::NextCamera),
+        Self::Control(Control::CameraLeft),
+        Self::Control(Control::CameraRight),
+        Self::Control(Control::CameraNearer),
+        Self::Control(Control::CameraFurther),
         Self::Control(Control::Overlay),
         Self::Control(Control::PlayPause),
         Self::Control(Control::NextTrack),
@@ -139,6 +151,10 @@ impl ButtonAction {
             Self::ShiftUpTwo => "shift_up_two",
             Self::ShiftDownTwo => "shift_down_two",
             Self::Control(Control::NextCamera) => "next_camera",
+            Self::Control(Control::CameraLeft) => "camera_left",
+            Self::Control(Control::CameraRight) => "camera_right",
+            Self::Control(Control::CameraNearer) => "camera_nearer",
+            Self::Control(Control::CameraFurther) => "camera_further",
             Self::Control(Control::Overlay) => "overlay",
             Self::Control(Control::PlayPause) => "play_pause",
             Self::Control(Control::NextTrack) => "next_track",

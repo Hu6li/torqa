@@ -37,7 +37,7 @@ var _ghost: Vector2 = Vector2.ZERO
 var _ghost_shown: bool = false
 var _peers: Array[Dictionary] = []
 var _track: PackedVector2Array = PackedVector2Array()
-## The rider's segments' stretches of the track (R300), on its grid.
+## The rider's segments' stretches of the track (R302), on its grid.
 var _segments: Array[PackedVector2Array] = []
 ## The track's extent, for the whole-route view.
 var _bounds: Rect2 = Rect2()
@@ -66,7 +66,7 @@ func set_track(track: PackedVector2Array) -> void:
 	_redraw_map()
 
 
-## Marks the rider's segments (`OrqwaApp.segments()`, R300) in their colour over the route.
+## Marks the rider's segments (`OrqwaApp.segments()`, R302) in their colour over the route.
 func set_segments(segments: Array) -> void:
 	_segments.clear()
 	for segment: Dictionary in segments:

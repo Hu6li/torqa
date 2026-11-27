@@ -1,6 +1,6 @@
 class_name SegmentList
 extends VBoxContainer
-## The rider's own segments of a course (R300) on its page: each with its length, where it
+## The rider's own segments of a course (R302) on its page: each with its length, where it
 ## starts and the rider's best time on it, renamed or moved with the pencil and removed with the
 ## bin. A new one is marked by its start and end, typed in, dragged across or clicked on the
 ## profile, or taken
@@ -72,6 +72,14 @@ func pick(distance_m: float) -> void:
 	_check()
 
 
+## How the profile marks a segment, under the form and as the profile's tooltip.
+func profile_hint() -> String:
+	return "%s %s" % [
+		tr("Drag across the profile to mark a segment, or click its start and end."),
+		tr("Drag either end or the middle to adjust it."),
+	]
+
+
 ## A drag across the profile while marking: the stretch from `start_m` to `end_m` at once. The
 ## next click sets the start again.
 func pick_stretch(start_m: float, end_m: float) -> void:
@@ -129,7 +137,7 @@ func _build_form() -> void:
 		ends.add_child(spin)
 	_form.add_child(ends)
 	var hint: Label = Label.new()
-	hint.text = tr("Or drag across the profile, then drag its ends or middle to adjust it.")
+	hint.text = profile_hint()
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", UiTheme.MUTED)

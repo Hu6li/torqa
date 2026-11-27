@@ -3508,8 +3508,11 @@ msgstr "Von"
 msgid "To"
 msgstr "Bis"
 
-msgid "Or drag across the profile, then drag its ends or middle to adjust it."
-msgstr "Oder ziehe im Profil darüber und passe es an seinen Enden oder seiner Mitte an."
+msgid "Drag across the profile to mark a segment, or click its start and end."
+msgstr "Ziehe im Profil über die Strecke, um ein Segment zu markieren, oder klicke auf Start und Ende."
+
+msgid "Drag either end or the middle to adjust it."
+msgstr "Ziehe an einem Ende oder in der Mitte, um es anzupassen."
 
 msgid "from %s"
 msgstr "ab %s"
@@ -3525,9 +3528,6 @@ msgstr "Segment entfernen; seine Zeiten bleiben bei den Fahrten"
 
 msgid "A segment is at least %s long."
 msgstr "Ein Segment ist mindestens %s lang."
-
-msgid "Drag across for the segment, then its ends or middle; or click both ends"
-msgstr "Über das Segment ziehen, dann an seinen Enden oder der Mitte; oder beide Enden anklicken"
 
 msgid "Segment  ·  %s"
 msgstr "Segment  ·  %s"
@@ -3585,3 +3585,15 @@ msgstr "Anstieg %d  ·  %.1f mi ab mi %.1f"
 
 msgid "%s  ·  %.1f mi from mi %.1f"
 msgstr "%s  ·  %.1f mi ab mi %.1f"
+
+msgid "Camera round to the left"
+msgstr "Kamera nach links schwenken"
+
+msgid "Camera round to the right"
+msgstr "Kamera nach rechts schwenken"
+
+msgid "Camera nearer"
+msgstr "Kamera näher heranholen"
+
+msgid "Camera further away"
+msgstr "Kamera weiter weg bewegen"

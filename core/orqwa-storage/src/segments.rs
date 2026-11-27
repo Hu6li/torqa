@@ -1,4 +1,4 @@
-//! A rider's own segments of a course (R300): stretches they time, such as a sprint or a
+//! A rider's own segments of a course (R302): stretches they time, such as a sprint or a
 //! favourite climb, kept per rider and route like course positions, apart from activities and
 //! the shared course files.
 

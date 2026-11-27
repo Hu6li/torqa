@@ -713,7 +713,7 @@ func _on_moment(moment: Dictionary) -> void:
 	_tell(MomentLines.figure(moment, _imperial), line)
 
 
-## A heads-up of a segment in its colour, with the chime but nothing to celebrate yet (R301):
+## A heads-up of a segment in its colour, with the chime but nothing to celebrate yet (R303):
 ## its distance counts down while the card shows, and the card goes once the rider is there.
 func _tell_segment_ahead(moment: Dictionary, voice: String) -> void:
 	if voice == "off":
@@ -839,15 +839,13 @@ func _step_time_scale(step: int) -> void:
 	_show_toast(tr("Simulation: %d×") % roundi(_time_scale))
 
 
-## A shifter's button asked for a control (#139): done as its key does.
+## A shifter or phone remote button asked for a ride control.
 func _on_control_requested(control: String) -> void:
 	if not visible:
 		return
-	if control == "next_camera":
-		# The overlay shows no world to look at.
-		if not is_overlay():
-			_cameras.cycle()
-	elif control == "overlay":
+	if not is_overlay() and _cameras.handle_control(control):
+		return
+	if control == "overlay":
 		if not _finished:
 			overlay_requested.emit(not is_overlay())
 	elif control == "pause":

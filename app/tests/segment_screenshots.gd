@@ -1,6 +1,6 @@
 class_name SegmentScreenshots
 extends RefCounted
-## The rider's own segments (R300) as riders see them: marked on the bundled course's page, then
+## The rider's own segments (R302) as riders see them: marked on the bundled course's page, then
 ## ridden twice on a short offline course with the fake trainer, at a steady pace and then
 ## faster, so the HUD, the map, the moments and the times in the summary all show.
 
@@ -64,7 +64,7 @@ static func _course_page(main: Control, out: String) -> void:
 	var field: LineEdit = list.get("_name")
 	field.text = "Ligerz climb"
 	field.text_changed.emit(field.text)
-	# Dragged across the profile from 6.0 to 8.3 km and let go (R302): it stays, with grips.
+	# Dragged across the profile from 6.0 to 8.3 km and let go (R304): it stays, with grips.
 	var profile: ElevationProfile = page.get("_profile")
 	var points: PackedVector2Array = profile.get("_profile")
 	var course_m: float = points[points.size() - 1].x
@@ -110,7 +110,7 @@ static func _rides(main: Control, out: String) -> void:
 		start.ride_started.emit(start.ride_options())
 		var name: String = "ride%d-" % ride
 		if ride == 2:
-			# The heads-up as the sprint comes (R301); the first ride opens with its greeting.
+			# The heads-up as the sprint comes (R303); the first ride opens with its greeting.
 			await _heads_up(main)
 			_save(main, out, name + "ahead")
 		await _reach(app, SPRINT_START_M - 70.0)
@@ -132,7 +132,7 @@ static func _rides(main: Control, out: String) -> void:
 		app.finish_ride()
 		await tree.create_timer(1.0).timeout
 		var quick: RideSummaryDialog = main.get("_quick_summary")
-		# Its segment times, as the card may have gone with the finish (R302).
+		# Its segment times, as the card may have gone with the finish (R304).
 		_save(main, out, name + "summary")
 		quick.custom_action.emit(&"details")
 		await tree.create_timer(1.0).timeout

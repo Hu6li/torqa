@@ -496,7 +496,7 @@ func _fill_climbs(ride: Dictionary) -> void:
 			else tr("Climb %d  ·  %.1f km from km %.1f") % [i + 1, length, start]
 		)
 		_climbs.add_child(_time_row(what, time_s, climb["avg_power"], record))
-	# The rider's own segments (R300), by the names they gave them.
+	# The rider's own segments (R302), by the names they gave them.
 	for segment: Dictionary in segments:
 		var segment_name: String = segment["name"]
 		var segment_start: float = segment["start_m"] / unit

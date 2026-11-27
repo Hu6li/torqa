@@ -68,13 +68,13 @@ func _lines() -> void:
 	for _i: int in range(4):
 		_check(MomentLines.line(MOMENTS[8], "casual", false, 7) == seeded, "a seed keeps the line")
 	_check(MomentLines.line({"kind": "unknown"}, "casual", false).is_empty(), "unknown kinds")
-	# The rider's own segments (R300) by the name they gave them.
+	# The rider's own segments (R302) by the name they gave them.
 	_check(
 		_plain(MOMENTS[11], false) == "Wabern sprint in 1:15, a personal record by 0:04.",
 		"a segment record"
 	)
 	_check(MomentLines.figure(MOMENTS[10], false) == "1:15", "a segment's time")
-	# Its start announced in round figures of the rider's units (R301).
+	# Its start announced in round figures of the rider's units (R303).
 	_check(_plain(MOMENTS[12], false) == "Wabern sprint starts in 190 m.", "a segment ahead")
 	_check(
 		_plain(MOMENTS[12], true) == "Wabern sprint starts in 610 ft.", "a segment ahead in feet"
@@ -174,7 +174,7 @@ func _card() -> void:
 	card.clear()
 	_check(not card.visible and not card.is_showing(), "cleared")
 	# A segment ahead is a heads-up, not an achievement: no burst, and before the cards still
-	# waiting, though after the one on screen (R301).
+	# waiting, though after the one on screen (R303).
 	var burst: CPUParticles2D = card.get("_burst")
 	card.tell("190 m", "A segment ahead.", UiTheme.SEGMENT_COLOR, true)
 	_check(card.is_showing() and not burst.emitting, "a heads-up without a burst")
