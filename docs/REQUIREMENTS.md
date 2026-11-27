@@ -833,8 +833,14 @@ residency even when generation finishes the whole course before riding.
 | R298 | Extends R17 and R295 (2026-11-24): **premium video courses** come as signed world files, ridden like other video courses and sold like other worlds (R296). *(Later stage.)* |
 | R299 | Extends R282 (2026-11-24, [ADR 0042](adr/0042-world-files.md)): world files can use **extensions** for features later ORQWA versions add, as glTF does: an ORQWA that does not know an optional extension shows the world without it, and one that does not know a required extension asks for an update instead of opening the world. Adding an extension needs no new world format. |
 
+## Climb detection
+
+| ID | Requirement |
+|---|---|
+| R300 | Refines R27 (2026-11-27). On GPX courses, if a rise averages below 3%, ORQWA checks whether a shorter section qualifies after trimming gentle stretches from its ends. The shorter section must meet the same climb criteria as any other rise. |
+
 ## Phone remote camera controls
 
 | ID | Requirement |
 |---|---|
-| R300 | Extends R86 and R276 (2026-11-27, #684): riders can assign **Camera round to the left**, **Camera round to the right**, **Camera nearer** and **Camera further away** to phone remote buttons. Each press works like the corresponding button on the ride's camera bar, including in first person and when the ride bar is folded. Camera controls act only while the ride shows a 3D world. Existing assignments are preserved. |
+| R301 | Extends R86 and R276 (2026-11-27, #684): riders can assign **Camera round to the left**, **Camera round to the right**, **Camera nearer** and **Camera further away** to phone remote buttons. Each press works like the corresponding button on the ride's camera bar, including in first person and when the ride bar is folded. Camera controls act only while the ride shows a 3D world. Existing assignments are preserved. |

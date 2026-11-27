@@ -245,6 +245,8 @@ Built in rideable steps:
 - [x] The history index of ADR 0002 (R79, #262): SQLite in the cache directory, built from
   the ride files and following them, so hundreds of rides cost one read
 - [x] Climbs (auto-detected, categorised) and personal records per route and climb
+  - [x] Find the steeper part of a GPX rise when a gentle approach or finish brings its
+    overall grade below the climb cutoff (R300)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and
@@ -333,7 +335,7 @@ Built in rideable steps:
     rider gave them behind a pen like a shifter's, showing the gear and the pause under the
     ORQWA logo; off until turned on under Devices, a secret token in its address, a new
     address to lock out those paired before; **not yet tried on a real phone or tablet**
-  - [x] Assign camera orbit and distance to remote buttons for 3D rides (R300, #684).
+  - [x] Assign camera orbit and distance to remote buttons for 3D rides (R301, #684).
   - [x] A TV remote between rides (R87): a pad of arrows, OK and Back goes through ORQWA's
     screens to start a course or workout, a held Finish & save ends a ride, and a focus ring
     shows where keyboard and remote are (Escape goes back too)
