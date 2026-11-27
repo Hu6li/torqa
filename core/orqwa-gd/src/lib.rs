@@ -523,10 +523,8 @@ impl OrqwaApp {
             .is_some_and(|app| app.fetch_planned_workouts(&day.to_string()))
     }
 
-    /// A shifter's button asked for a ride control (#139), to be carried out as its key is:
-    /// `next_camera`, `overlay`, the music's `play_pause`, `next` and `previous`, `pause`,
-    /// `difficulty_up` and `_down`, the workout's `intensity_up` and `_down`, `skip_step`, or
-    /// `finish_ride`.
+    /// A shifter or phone remote asked for a ride control by its button action name.
+    /// Music track controls use `next` and `previous`.
     #[signal]
     fn control_requested(control: GString);
 
@@ -4661,18 +4659,9 @@ impl OrqwaApp {
 /// How the front end calls `control`: the music's as `control_music` does.
 fn control_name(control: Control) -> &'static str {
     match control {
-        Control::NextCamera => "next_camera",
-        Control::Overlay => "overlay",
-        Control::PlayPause => "play_pause",
         Control::NextTrack => "next",
         Control::PreviousTrack => "previous",
-        Control::Pause => "pause",
-        Control::DifficultyUp => "difficulty_up",
-        Control::DifficultyDown => "difficulty_down",
-        Control::IntensityUp => "intensity_up",
-        Control::IntensityDown => "intensity_down",
-        Control::SkipStep => "skip_step",
-        Control::FinishRide => "finish_ride",
+        _ => ButtonAction::Control(control).name(),
     }
 }
 

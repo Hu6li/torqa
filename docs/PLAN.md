@@ -333,6 +333,7 @@ Built in rideable steps:
     rider gave them behind a pen like a shifter's, showing the gear and the pause under the
     ORQWA logo; off until turned on under Devices, a secret token in its address, a new
     address to lock out those paired before; **not yet tried on a real phone or tablet**
+  - [x] Assign camera orbit and distance to remote buttons for 3D rides (R300, #684).
   - [x] A TV remote between rides (R87): a pad of arrows, OK and Back goes through ORQWA's
     screens to start a course or workout, a held Finish & save ends a ride, and a focus ring
     shows where keyboard and remote are (Escape goes back too)

@@ -840,15 +840,13 @@ func _step_time_scale(step: int) -> void:
 	_show_toast(tr("Simulation: %d×") % roundi(_time_scale))
 
 
-## A shifter's button asked for a control (#139): done as its key does.
+## A shifter or phone remote button asked for a ride control.
 func _on_control_requested(control: String) -> void:
 	if not visible:
 		return
-	if control == "next_camera":
-		# The overlay shows no world to look at.
-		if not is_overlay():
-			_cameras.cycle()
-	elif control == "overlay":
+	if not is_overlay() and _cameras.handle_control(control):
+		return
+	if control == "overlay":
 		if not _finished:
 			overlay_requested.emit(not is_overlay())
 	elif control == "pause":

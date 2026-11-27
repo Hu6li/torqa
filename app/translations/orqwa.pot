@@ -687,16 +687,32 @@ msgstr ""
 msgid "Camera distance: %s"
 msgstr ""
 
+#: app/scenes/button_dialog.gd
+msgid "Camera further away"
+msgstr ""
+
 #: app/ui/camera_bar.gd
 msgid "Camera further away, or look down (Shift + ↓)"
+msgstr ""
+
+#: app/scenes/button_dialog.gd
+msgid "Camera nearer"
 msgstr ""
 
 #: app/ui/camera_bar.gd
 msgid "Camera nearer, or look up (Shift + ↑)"
 msgstr ""
 
+#: app/scenes/button_dialog.gd
+msgid "Camera round to the left"
+msgstr ""
+
 #: app/ui/camera_bar.gd
 msgid "Camera round to the left (Shift + ←); in first person, look right"
+msgstr ""
+
+#: app/scenes/button_dialog.gd
+msgid "Camera round to the right"
 msgstr ""
 
 #: app/ui/camera_bar.gd

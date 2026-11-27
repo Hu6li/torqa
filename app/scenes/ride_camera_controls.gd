@@ -60,7 +60,25 @@ func press(key: InputEventKey) -> void:
 		_turn(-1 if key.keycode == KEY_UP else 1, true)
 
 
-## The next camera (C, or a shifter's button).
+## Handles an assigned ride control using the same directions as the camera bar.
+func handle_control(control: String) -> bool:
+	match control:
+		"next_camera":
+			cycle()
+		"camera_left":
+			_turn(-1, false)
+		"camera_right":
+			_turn(1, false)
+		"camera_nearer":
+			_turn(-1, true)
+		"camera_further":
+			_turn(1, true)
+		_:
+			return false
+	return true
+
+
+## The next camera (C, the camera bar, or an assigned button).
 func cycle() -> void:
 	if _world_shown:
 		_tell.call(tr("Camera: %s") % tr(_world.cycle_camera()))

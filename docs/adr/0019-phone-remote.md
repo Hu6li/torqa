@@ -123,3 +123,9 @@ playing, wake lock or not, each by its own rule, which the page meets with one c
   page shows the old hint, but where it plays and the browser keeps no screen on for it, the
   rider gets no hint. On an iPhone the screen can still lock before the first touch. Firefox
   on Android keeps the screen on with it (tried 2026-10-18).
+
+## Amendment 2026-11-27: camera buttons (R300)
+
+Orbit and distance are assignable ride controls alongside **Next camera**. The phone uses
+the same slot assignments and press requests as other controls. Godot applies the same
+steps as the ride's camera bar, including the first-person look directions.
