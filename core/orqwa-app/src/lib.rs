@@ -72,7 +72,7 @@ use orqwa_storage::course::{self, CourseCountry, Manifest};
 use orqwa_storage::index::HistoryIndex;
 use orqwa_storage::profiles::{self, DeviceRole, StoredProfile};
 pub use orqwa_storage::profiles::{GraphicsQuality, OverlayWindow, RideVolumes};
-use orqwa_storage::rides::{self, ClimbTime, RideRecord};
+use orqwa_storage::rides::{self, ClimbTime, RideRecord, SegmentTime};
 use orqwa_terrain::{Terrain, TileSource};
 pub use orqwa_video::Frame;
 use orqwa_video::Video;
@@ -645,6 +645,12 @@ struct ActiveRide {
     segments_done: Vec<bool>,
     /// Per entry of `records.segments`: the rider was told it is coming.
     segments_told: Vec<bool>,
+    /// The segments timed so far, as told: the ride saves these rather than measuring its
+    /// samples again, which would bridge a jump.
+    segment_times: Vec<SegmentTime>,
+    /// The first sample since the last jump: segments are timed from there, as the samples
+    /// before it lie on another stretch of the course.
+    segments_from: usize,
     milestones: moments::Milestones,
     peaks: moments::PowerPeaks,
     steps: moments::StepsHeld,
@@ -2945,6 +2951,7 @@ impl App {
         };
         active.ride.jump_to(distance);
         active.simulated = true;
+        active.segments_from = active.ride.samples().len();
         // Climbs passed by jumping are not timed; the next one counts from where it starts.
         let distance = active.ride.state().distance;
         active.milestones.skip_to(distance);
@@ -3757,6 +3764,8 @@ impl App {
             records,
             next_climb: 0,
             segments_told: vec![false; segments_done.len()],
+            segment_times: Vec::new(),
+            segments_from: 0,
             segments_done,
             milestones,
             peaks,
@@ -3872,7 +3881,7 @@ impl App {
     }
 
     fn save_ride(&mut self, remember: bool) -> Vec<AppEvent> {
-        let Some(active) = self.ride.take() else {
+        let Some(mut active) = self.ride.take() else {
             return Vec::new();
         };
         let Some(start) = active.started else {
@@ -3881,6 +3890,8 @@ impl App {
         if active.ride.samples().is_empty() {
             return Vec::new();
         }
+        // A segment ending on the last sample, should the rider stop before the ride ticks again.
+        segments::timed(&mut active, false);
         let path = profiles::rides_dir(&self.data_dir, &self.profile.id)
             .join(paths::activity_file_name(start));
         let unplaced: Vec<orqwa_domain::recording::Sample>;
@@ -3934,7 +3945,7 @@ impl App {
                     .and_then(|route| effort(samples, Meters(0.0), route.length()))
                     .map(|e| e.elapsed),
                 climbs: climb_times(route, samples, entry, counts),
-                segments: segments::times(&active.records.segments, samples, entry),
+                segments: active.segment_times.clone(),
                 name: None,
                 ftp_estimate: active.ride.ftp_estimate(),
                 rider_mass: Some(self.profile.profile.rider_mass),

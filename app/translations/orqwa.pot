@@ -1499,8 +1499,12 @@ msgstr ""
 msgid "Drafting on"
 msgstr ""
 
-#: app/scenes/course_detail.gd
-msgid "Drag across for the segment, then its ends or middle; or click both ends"
+#: app/ui/segment_list.gd
+msgid "Drag across the profile to mark a segment, or click its start and end."
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Drag either end or the middle to adjust it."
 msgstr ""
 
 #: app/scenes/overlay_hud.gd
@@ -2869,10 +2873,6 @@ msgstr ""
 
 #: app/ui/profile_form.gd
 msgid "Optional sex for heart-rate calories. Separate from your avatar, and not needed with power."
-msgstr ""
-
-#: app/ui/segment_list.gd
-msgid "Or drag across the profile, then drag its ends or middle to adjust it."
 msgstr ""
 
 #: app/scenes/group_rides_tab.gd

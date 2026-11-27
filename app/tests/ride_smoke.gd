@@ -494,6 +494,21 @@ func _segments() -> void:
 		not form.visible and is_equal_approx(length, 300.0), "the segment is listed: %s" % [marked]
 	)
 	_check(_orqwa.save_segment(id, "Smoke sprint", 0.0, 300.0), "renamed")
+	# Renamed in miles, which the fields show to a hundredth (0.19 mi), it stays where it was.
+	list.set("_imperial", true)
+	list.call("_open_form", id, "Smoke sprint", 0.0, 300.0)
+	field.text = "Smoke sprint, miles"
+	field.text_changed.emit(field.text)
+	save.pressed.emit()
+	var renamed: Dictionary = _orqwa.segments()[0]
+	var renamed_name: String = renamed.get("name", "")
+	var renamed_end: float = renamed.get("end_m", 0.0)
+	_check(
+		renamed_name == "Smoke sprint, miles" and is_equal_approx(renamed_end, 300.0),
+		"not moved by the miles: %s" % [renamed]
+	)
+	list.set("_imperial", false)
+	_check(_orqwa.save_segment(id, "Smoke sprint", 0.0, 300.0), "renamed back")
 	# The maps draw its stretch of road: due north from the start for 300 m.
 	var listed: Dictionary = _orqwa.segments()[0]
 	var stretch: PackedVector2Array = listed.get("track", PackedVector2Array())

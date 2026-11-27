@@ -1,11 +1,10 @@
 //! The rider's own segments of a course (R302): stretches such as a sprint or a favourite climb
-//! that they mark on the course or bring as a GPX track, timed on every ride like the climbs,
-//! with their best time to beat.
+//! that they mark on the course or bring as a GPX track. Like a climb, a segment is timed on
+//! each ride that covers all of it, and its best time is the one to beat.
 
 use std::path::Path;
 use std::time::Duration;
 
-use orqwa_domain::recording::Sample;
 use orqwa_domain::units::Meters;
 use orqwa_routes::Route;
 use orqwa_session::analysis::{effort, time_at};
@@ -100,9 +99,15 @@ pub(crate) fn passed(records: &[SegmentBest], entry: Meters) -> Vec<bool> {
 }
 
 /// The segments the rider has completed since the last look, as moments; `real` false (a
-/// simulated or assisted ride) sets no records.
+/// simulated or assisted ride) sets no records. Their times are kept for the saved ride as they
+/// come: timed again from the samples at the end, a segment jumped into would be bridged.
 pub(crate) fn timed(active: &mut ActiveRide, real: bool) -> Vec<Moment> {
     let entry = active.ride.entry_distance();
+    let since_jump = active
+        .ride
+        .samples()
+        .get(active.segments_from..)
+        .unwrap_or_default();
     let mut moments = Vec::new();
     for (record, done) in active
         .records
@@ -114,10 +119,15 @@ pub(crate) fn timed(active: &mut ActiveRide, real: bool) -> Vec<Moment> {
             continue;
         }
         let (start, end) = in_ride(&record.segment, entry);
-        let Some(effort) = effort(active.ride.samples(), start, end) else {
+        let Some(effort) = effort(since_jump, start, end) else {
             continue;
         };
         *done = true;
+        active.segment_times.push(SegmentTime {
+            elapsed: effort.elapsed,
+            avg_power: effort.avg_power,
+            ..probe(&record.segment)
+        });
         let name = record.segment.name.clone();
         let elapsed = effort.elapsed;
         moments.push(match record.best.filter(|best| real && elapsed < *best) {
@@ -164,28 +174,6 @@ pub(crate) fn heralded(active: &mut ActiveRide) -> Vec<Moment> {
         });
     }
     moments
-}
-
-/// The times of a finished ride on the segments it rode from their start. A simulated or
-/// assisted ride keeps them too, for its summary, though [`best_time`] passes over them: a
-/// segment told of as the ride finished would otherwise leave no trace.
-pub(crate) fn times(
-    records: &[SegmentBest],
-    samples: &[Sample],
-    entry: Meters,
-) -> Vec<SegmentTime> {
-    records
-        .iter()
-        .filter(|s| s.segment.start_m >= entry.0)
-        .filter_map(|s| {
-            let (start, end) = in_ride(&s.segment, entry);
-            effort(samples, start, end).map(|e| SegmentTime {
-                elapsed: e.elapsed,
-                avg_power: e.avg_power,
-                ..probe(&s.segment)
-            })
-        })
-        .collect()
 }
 
 impl App {
@@ -318,8 +306,13 @@ impl App {
             .filter(|s| state.distance.0 < s.segment.end_m)
             .min_by(|a, b| a.segment.end_m.total_cmp(&b.segment.end_m))
         {
-            let started = time_at(active.ride.samples(), in_ride(&record.segment, entry).0)
-                .unwrap_or(state.elapsed);
+            let since_jump = active
+                .ride
+                .samples()
+                .get(active.segments_from..)
+                .unwrap_or_default();
+            let started =
+                time_at(since_jump, in_ride(&record.segment, entry).0).unwrap_or(state.elapsed);
             return Some(SegmentProgress {
                 segment: record.segment.clone(),
                 ahead: None,
@@ -523,6 +516,65 @@ mod tests {
         assert_eq!(history[0].record.segments.len(), 1);
         assert_eq!(history[0].segment_records, [false]);
         assert_eq!(app.segments()[0].best, None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_jump_is_not_counted_as_riding_a_segment() {
+        use orqwa_devices::fake::FakeRider;
+        use orqwa_domain::units::{Percent, Rpm, Watts};
+        use orqwa_physics::DescentMode;
+
+        let (dir, mut app) = loaded("segments-jump");
+        app.add_segment("Jumped into", Meters(300.0), Meters(600.0))
+            .unwrap();
+        app.add_segment("Ridden again", Meters(700.0), Meters(1000.0))
+            .unwrap();
+        app.connect_trainer(crate::TrainerChoice::Fake(FakeRider {
+            power: Watts(400.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+        app.set_time_scale(20.0);
+        let mut events = Vec::new();
+        let mut ride_to = |app: &mut App, distance: f64| {
+            while app.ride_state().is_some_and(|s| s.distance.0 < distance) {
+                std::thread::sleep(Duration::from_millis(16));
+                events.extend(app.update(Duration::from_millis(16)));
+            }
+        };
+
+        // Into the first from before it; out of the second, back to before its start.
+        ride_to(&mut app, 100.0);
+        assert!(app.jump_to(Meters(450.0)));
+        ride_to(&mut app, 850.0);
+        assert!(app.jump_to(Meters(650.0)));
+        let back = app.ride_state().unwrap().elapsed;
+        ride_to(&mut app, 1100.0);
+        let since_back = app.ride_state().unwrap().elapsed.saturating_sub(back);
+        app.finish_ride();
+
+        let done: Vec<(&str, Duration)> = events
+            .iter()
+            .filter_map(|e| match e {
+                AppEvent::Moment(Moment::SegmentDone { name, elapsed }) => {
+                    Some((name.as_str(), *elapsed))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(done.len(), 1, "{done:?}");
+        let (name, elapsed) = done[0];
+        assert_eq!(name, "Ridden again");
+        assert!(elapsed < since_back, "{elapsed:?} of {since_back:?}");
+        let saved = &app.history()[0].record.segments;
+        assert_eq!(saved.len(), 1, "{saved:?}");
+        assert_eq!(saved[0].name, "Ridden again");
+        assert_eq!(saved[0].elapsed, elapsed, "saved as told");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

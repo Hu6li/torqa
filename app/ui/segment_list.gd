@@ -35,6 +35,10 @@ var _refused: AcceptDialog = AcceptDialog.new()
 var _editing: int = -1
 ## The next click on the profile sets the end rather than the start.
 var _picks_end: bool = false
+## The ends being marked, in metres: the fields round them to what they show, a hundredth of a
+## mile or kilometre, which would move a segment on every save.
+var _start_m: float = 0.0
+var _end_m: float = 0.0
 
 
 func bind(orqwa: OrqwaApp) -> void:
@@ -61,23 +65,24 @@ func clear() -> void:
 func pick(distance_m: float) -> void:
 	if not _form.visible:
 		return
-	var at: float = _from_meters(clampf(distance_m, 0.0, _length_m))
+	var at: float = clampf(distance_m, 0.0, _length_m)
 	if _picks_end:
-		_end.value = at
+		_set_ends(_start_m, at)
 	else:
-		_start.value = at
-		if _to_meters(_end.value) < distance_m + MIN_LENGTH_M:
-			_end.value = _from_meters(minf(distance_m + MIN_LENGTH_M, _length_m))
+		_set_ends(at, maxf(_end_m, minf(at + MIN_LENGTH_M, _length_m)))
 	_picks_end = not _picks_end
 	_check()
 
 
 ## How the profile marks a segment, under the form and as the profile's tooltip.
 func profile_hint() -> String:
-	return "%s %s" % [
-		tr("Drag across the profile to mark a segment, or click its start and end."),
-		tr("Drag either end or the middle to adjust it."),
-	]
+	return (
+		"%s %s"
+		% [
+			tr("Drag across the profile to mark a segment, or click its start and end."),
+			tr("Drag either end or the middle to adjust it."),
+		]
+	)
 
 
 ## A drag across the profile while marking: the stretch from `start_m` to `end_m` at once. The
@@ -85,8 +90,7 @@ func profile_hint() -> String:
 func pick_stretch(start_m: float, end_m: float) -> void:
 	if not _form.visible:
 		return
-	_start.value = _from_meters(clampf(start_m, 0.0, _length_m))
-	_end.value = _from_meters(clampf(end_m, 0.0, _length_m))
+	_set_ends(clampf(start_m, 0.0, _length_m), clampf(end_m, 0.0, _length_m))
 	_picks_end = false
 	_check()
 
@@ -133,9 +137,19 @@ func _build_form() -> void:
 		var spin: SpinBox = pair[1]
 		spin.step = 0.01
 		spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		spin.value_changed.connect(func(_value: float) -> void: _check())
 		ends.add_child(spin)
 	_form.add_child(ends)
+	# Typed in, the field's value is what the rider means.
+	_start.value_changed.connect(
+		func(value: float) -> void:
+			_start_m = _to_meters(value)
+			_check()
+	)
+	_end.value_changed.connect(
+		func(value: float) -> void:
+			_end_m = _to_meters(value)
+			_check()
+	)
 	var hint: Label = Label.new()
 	hint.text = profile_hint()
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -221,8 +235,7 @@ func _open_form(id: int, segment_name: String, start_m: float, end_m: float) -> 
 		spin.max_value = _from_meters(_length_m)
 		spin.suffix = "mi" if _imperial else "km"
 	_name.text = segment_name
-	_start.value = _from_meters(start_m)
-	_end.value = _from_meters(end_m)
+	_set_ends(start_m, end_m)
 	_picks_end = false
 	_actions.hide()
 	_form.show()
@@ -242,8 +255,8 @@ func _close_form() -> void:
 
 ## Save waits for a name and a stretch long enough to time.
 func _check() -> void:
-	draft_changed.emit(_to_meters(_start.value), _to_meters(_end.value))
-	var length: float = _to_meters(_end.value) - _to_meters(_start.value)
+	draft_changed.emit(_start_m, _end_m)
+	var length: float = _end_m - _start_m
 	_save.disabled = _name.text.strip_edges().is_empty() or length < MIN_LENGTH_M
 	_save.tooltip_text = (
 		tr("A segment is at least %s long.") % MomentLines.distance(MIN_LENGTH_M, _imperial)
@@ -253,9 +266,8 @@ func _check() -> void:
 
 
 func _on_save() -> void:
-	var start: float = _to_meters(_start.value)
-	var end: float = minf(_to_meters(_end.value), _length_m)
-	if _orqwa.save_segment(_editing, _name.text.strip_edges(), start, end):
+	var end: float = minf(_end_m, _length_m)
+	if _orqwa.save_segment(_editing, _name.text.strip_edges(), _start_m, end):
 		_close_form()
 		_refresh()
 
@@ -283,6 +295,14 @@ func _on_file_selected(picked: String) -> void:
 	var start: float = found["start_m"]
 	var end: float = found["end_m"]
 	_open_form(-1, found_name, start, end)
+
+
+## Shows the ends without taking the fields' rounding back.
+func _set_ends(start_m: float, end_m: float) -> void:
+	_start_m = start_m
+	_end_m = end_m
+	_start.set_value_no_signal(_from_meters(start_m))
+	_end.set_value_no_signal(_from_meters(end_m))
 
 
 func _from_meters(meters: float) -> float:
