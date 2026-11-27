@@ -151,12 +151,31 @@ func _keys_and_buttons() -> void:
 	_check(not buttons.visible, "folded away with the bar")
 	await _press(KEY_LEFT)
 	_check(world.camera_angle() == 7, "the keys work with the bar folded")
+
+	var orqwa: OrqwaApp = ride.get("_orqwa")
+	orqwa.control_requested.emit("camera_right")
+	_check(world.camera_angle() == 0, "the remote goes round to the right with the bar folded")
+	orqwa.control_requested.emit("camera_nearer")
+	_check(view.distance == 1, "the remote brings the camera nearer")
+	orqwa.control_requested.emit("camera_further")
+	_check(view.distance == 2, "the remote takes the camera further")
+	orqwa.control_requested.emit("camera_left")
+	_check(world.camera_angle() == 7, "the remote goes round to the left")
+	world.set_camera(RideWorld.CameraMode.FIRST_PERSON)
+	orqwa.control_requested.emit("camera_left")
+	_check(view.look == 1, "in first person the remote swings the view like the camera bar")
+	orqwa.control_requested.emit("camera_nearer")
+	_check(view.tilt == 2, "in first person the remote looks up")
+	world.set_camera(RideWorld.CameraMode.CHASE)
+
 	bar.folded = false
 	bar.folded_changed.emit(false)
 	cameras.begin(false)
 	_check(not buttons.visible, "no buttons without a world to look at")
 	await _press(KEY_RIGHT)
 	_check(world.camera_angle() == 7, "nor keys")
+	orqwa.control_requested.emit("camera_right")
+	_check(world.camera_angle() == 7, "the remote cannot turn the camera without a world")
 	main.free()
 
 

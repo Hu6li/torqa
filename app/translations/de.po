@@ -3480,3 +3480,15 @@ msgstr "Der verfügbare Arbeitsspeicher von Android konnte nicht geprüft werden
 
 msgid "Android reports low memory (%s available). Close other apps or lower View distance, then reopen the course."
 msgstr "Android meldet zu wenig Arbeitsspeicher (%s verfügbar). Schließe andere Apps oder reduziere die Sichtweite und öffne die Strecke erneut."
+
+msgid "Camera round to the left"
+msgstr "Kamera nach links schwenken"
+
+msgid "Camera round to the right"
+msgstr "Kamera nach rechts schwenken"
+
+msgid "Camera nearer"
+msgstr "Kamera näher heranholen"
+
+msgid "Camera further away"
+msgstr "Kamera weiter weg bewegen"

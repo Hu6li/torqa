@@ -838,3 +838,9 @@ residency even when generation finishes the whole course before riding.
 | ID | Requirement |
 |---|---|
 | R300 | Refines R27 (2026-11-27). On GPX courses, if a rise averages below 3%, ORQWA checks whether a shorter section qualifies after trimming gentle stretches from its ends. The shorter section must meet the same climb criteria as any other rise. |
+
+## Phone remote camera controls
+
+| ID | Requirement |
+|---|---|
+| R301 | Extends R86 and R276 (2026-11-27, #684): riders can assign **Camera round to the left**, **Camera round to the right**, **Camera nearer** and **Camera further away** to phone remote buttons. Each press works like the corresponding button on the ride's camera bar, including in first person and when the ride bar is folded. Camera controls act only while the ride shows a 3D world. Existing assignments are preserved. |
