@@ -3917,6 +3917,7 @@ impl App {
                     .and_then(|()| std::fs::write(&path, fit))
                     .map_err(|e| Failure::new(Kind::SaveFile, e).arg(path.display()))
             });
+        let mut lost_times = None;
         if saved.is_ok() {
             let route = active.ride.route();
             let finished = active.ride.is_finished();
@@ -3958,6 +3959,13 @@ impl App {
             if let Err(error) = rides::save(&path, &record) {
                 warn!(%error, "cannot save ride metadata");
             }
+            // Nothing rebuilds these, so the rider hears of it.
+            if let Err(error) = rides::save_segments(&path, &record.segments) {
+                lost_times = Some(
+                    Failure::new(Kind::SaveSegmentTimes, error)
+                        .arg(rides::segments_path(&path).display()),
+                );
+            }
         }
         let progress = if saved.is_ok() {
             self.save_ride_continuation(&active, &path, remember)
@@ -3968,6 +3976,7 @@ impl App {
             Ok(()) => AppEvent::RideSaved(path),
             Err(message) => AppEvent::Error(message),
         }];
+        events.extend(lost_times.map(AppEvent::Error));
         events.extend(progress.err().map(AppEvent::Error));
         events
     }
@@ -4421,7 +4430,7 @@ impl App {
         rides::save(fit, &record).map_err(storage)
     }
 
-    /// Deletes a ride: its FIT file and metadata.
+    /// Deletes a ride: its FIT file, metadata and segment times.
     ///
     /// # Errors
     /// [`AppError::Reported`] if the FIT file cannot be removed.
@@ -4430,6 +4439,7 @@ impl App {
             AppError::Reported(Failure::new(Kind::DeleteFile, e).arg(fit.display()))
         })?;
         let _ = std::fs::remove_file(rides::metadata_path(fit));
+        let _ = std::fs::remove_file(rides::segments_path(fit));
         self.restore_discarded_continuation(fit)?;
         Ok(())
     }

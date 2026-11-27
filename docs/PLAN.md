@@ -259,6 +259,10 @@ Built in rideable steps:
     segment times, which simulated and assisted rides keep without setting records (R304)
   - [x] The marked stretch stays on the profile, its ends and middle draggable until saved;
     segments in a light tint of the accent blue (R305)
+  - [x] Segment times in their own versioned file beside each ride, which releases before them
+    leave alone, synced and deleted with the ride, and reported if not saved (ADR 0044)
+  - [ ] Segment definitions one file each with a stable id and the prepared route's revision;
+    a rebuilt route asks the rider to confirm a segment's ends (ADR 0044)
 - [x] Ghosts & pacers: own best, power / W/kg pacers, recorded GPX/FIT activities (R20)
 - [x] Audio (R26, R114): music app control, original video sound (Phase 5), and continuous
   ambient riding sound (#259, ADR 0029): CC0 wind and bicycle textures, irregular gusts and

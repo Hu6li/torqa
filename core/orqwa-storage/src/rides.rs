@@ -1,6 +1,10 @@
 //! Ride metadata (R31, ADR 0002): next to each FIT activity a JSON file with the route name and
 //! the ride's summary, so the history lists rides without decoding every FIT file. The FIT file
 //! stays the source of truth; a missing or outdated JSON file can be rebuilt from it.
+//!
+//! The times on the rider's own segments (R302) are in a third file, `<ride>.segments.json`
+//! (ADR 0044): they cannot be rebuilt from the FIT file, and an ORQWA from before them rewrites
+//! the metadata without the fields it does not know, as when it renames a ride.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -21,6 +25,10 @@ pub const FORMAT_VERSION: u32 = 2;
 /// versions only add to it, so a newer one still reads as this one. Version 1 held the power
 /// curve, version 2 added the power and heart-rate histograms (R64).
 pub const ANALYSIS_VERSION: u32 = 2;
+
+/// The segment times format written by this version (ADR 0044). Later versions of the same
+/// format only add fields, which this one passes over; a file of a newer format is not misread.
+pub const SEGMENTS_VERSION: u32 = 1;
 
 /// Reading or writing ride metadata failed.
 #[derive(Debug, thiserror::Error)]
@@ -190,8 +198,45 @@ struct RideFile {
     assisted: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     analysis: Option<AnalysisFile>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+}
+
+/// `<ride>.segments.json`.
+#[derive(Debug, Serialize, Deserialize)]
+struct SegmentsFile {
+    format: u32,
     segments: Vec<SegmentFile>,
+}
+
+/// What the history index keeps of a ride: both its files' contents in one text.
+#[derive(Debug, Serialize, Deserialize)]
+struct IndexedRide {
+    metadata: RideFile,
+    #[serde(default)]
+    segments: Vec<SegmentFile>,
+}
+
+impl From<&SegmentTime> for SegmentFile {
+    fn from(s: &SegmentTime) -> Self {
+        Self {
+            name: s.name.clone(),
+            start_m: s.start.0,
+            end_m: s.end.0,
+            time_s: s.elapsed.as_secs_f64(),
+            avg_power_w: s.avg_power.map(|p| p.0),
+        }
+    }
+}
+
+impl From<SegmentFile> for SegmentTime {
+    fn from(s: SegmentFile) -> Self {
+        Self {
+            name: s.name,
+            start: Meters(s.start_m),
+            end: Meters(s.end_m),
+            elapsed: Duration::from_secs_f64(s.time_s.max(0.0)),
+            avg_power: s.avg_power_w.map(Watts),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -283,17 +328,6 @@ impl From<&RideRecord> for RideFile {
                     avg_power_w: c.avg_power.map(|p| p.0),
                 })
                 .collect(),
-            segments: r
-                .segments
-                .iter()
-                .map(|s| SegmentFile {
-                    name: s.name.clone(),
-                    start_m: s.start.0,
-                    end_m: s.end.0,
-                    time_s: s.elapsed.as_secs_f64(),
-                    avg_power_w: s.avg_power.map(|p| p.0),
-                })
-                .collect(),
         }
     }
 }
@@ -342,17 +376,8 @@ impl From<RideFile> for RideRecord {
                     avg_power: c.avg_power_w.map(Watts),
                 })
                 .collect(),
-            segments: f
-                .segments
-                .into_iter()
-                .map(|s| SegmentTime {
-                    name: s.name,
-                    start: Meters(s.start_m),
-                    end: Meters(s.end_m),
-                    elapsed: Duration::from_secs_f64(s.time_s.max(0.0)),
-                    avg_power: s.avg_power_w.map(Watts),
-                })
-                .collect(),
+            // In their own file: see `load`.
+            segments: Vec::new(),
         }
     }
 }
@@ -363,46 +388,120 @@ pub fn metadata_path(fit: &Path) -> PathBuf {
     fit.with_extension("json")
 }
 
-/// Writes the metadata of the ride stored in `fit`, atomically.
+/// The segment times file belonging to a FIT file: same name, `.segments.json`. Releases before
+/// it list rides by their FIT files and read only the metadata beside them, so they leave it be.
+#[must_use]
+pub fn segments_path(fit: &Path) -> PathBuf {
+    fit.with_extension("segments.json")
+}
+
+/// Writes `bytes` to `path` through a `.part` file beside it, so a reader or a sync client
+/// never sees half of it.
+fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), RideError> {
+    let mut partial = path.as_os_str().to_owned();
+    partial.push(".part");
+    let partial = PathBuf::from(partial);
+    std::fs::write(&partial, bytes)?;
+    std::fs::rename(&partial, path)?;
+    Ok(())
+}
+
+/// Writes the metadata of the ride stored in `fit`, atomically. Its segment times are not
+/// part of it: [`save_segments`] writes them, once, when the ride is saved.
 ///
 /// # Errors
 /// On file system errors.
 pub fn save(fit: &Path, record: &RideRecord) -> Result<(), RideError> {
-    let path = metadata_path(fit);
-    let partial = path.with_extension("json.part");
-    std::fs::write(
-        &partial,
-        serde_json::to_vec_pretty(&RideFile::from(record))?,
-    )?;
-    std::fs::rename(&partial, &path)?;
-    Ok(())
+    write_atomically(
+        &metadata_path(fit),
+        &serde_json::to_vec_pretty(&RideFile::from(record))?,
+    )
 }
 
-/// Reads the metadata of the ride stored in `fit`.
+/// Writes the times on the rider's segments of the ride stored in `fit`, atomically; none
+/// writes no file.
 ///
 /// # Errors
-/// If it is missing, malformed or from a newer ORQWA.
-pub fn load(fit: &Path) -> Result<RideRecord, RideError> {
-    from_json(&std::fs::read_to_string(metadata_path(fit))?)
+/// On file system errors.
+pub fn save_segments(fit: &Path, times: &[SegmentTime]) -> Result<(), RideError> {
+    if times.is_empty() {
+        return Ok(());
+    }
+    let file = SegmentsFile {
+        format: SEGMENTS_VERSION,
+        segments: times.iter().map(SegmentFile::from).collect(),
+    };
+    write_atomically(&segments_path(fit), &serde_json::to_vec_pretty(&file)?)
 }
 
-/// The metadata as the file holds it, for the history index to keep (R79).
+/// The segment times of the ride stored in `fit`: none without the file.
+///
+/// # Errors
+/// If the file is unreadable, malformed or from a newer ORQWA.
+pub fn load_segments(fit: &Path) -> Result<Vec<SegmentTime>, RideError> {
+    let text = match std::fs::read_to_string(segments_path(fit)) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let format = format_of(&text)?;
+    if format > SEGMENTS_VERSION {
+        return Err(RideError::NewerFormat(format));
+    }
+    let file: SegmentsFile = serde_json::from_str(&text)?;
+    Ok(file.segments.into_iter().map(SegmentTime::from).collect())
+}
+
+/// Reads the metadata of the ride stored in `fit`, with its segment times. Times that cannot
+/// be read (from a newer ORQWA, say) are left out rather than costing the ride.
+///
+/// # Errors
+/// If the metadata is missing, malformed or from a newer ORQWA.
+pub fn load(fit: &Path) -> Result<RideRecord, RideError> {
+    let mut record = metadata_from_json(&std::fs::read_to_string(metadata_path(fit))?)?;
+    record.segments = load_segments(fit).unwrap_or_default();
+    Ok(record)
+}
+
+/// The ride with its segment times as one text, for the history index to keep (R79).
 ///
 /// # Errors
 /// If it cannot be written as JSON.
 pub fn to_json(record: &RideRecord) -> Result<String, RideError> {
-    Ok(serde_json::to_string(&RideFile::from(record))?)
+    Ok(serde_json::to_string(&IndexedRide {
+        metadata: RideFile::from(record),
+        segments: record.segments.iter().map(SegmentFile::from).collect(),
+    })?)
 }
 
-/// A ride's metadata from the text of its file.
+/// A ride from the text [`to_json`] made of it.
 ///
 /// # Errors
 /// If it is malformed or from a newer ORQWA.
 pub fn from_json(text: &str) -> Result<RideRecord, RideError> {
-    let format = serde_json::from_str::<serde_json::Value>(text)?["format"]
+    let indexed: IndexedRide = serde_json::from_str(text)?;
+    if indexed.metadata.format > FORMAT_VERSION {
+        return Err(RideError::NewerFormat(indexed.metadata.format));
+    }
+    let mut record = RideRecord::from(indexed.metadata);
+    record.segments = indexed
+        .segments
+        .into_iter()
+        .map(SegmentTime::from)
+        .collect();
+    Ok(record)
+}
+
+fn format_of(text: &str) -> Result<u32, RideError> {
+    Ok(serde_json::from_str::<serde_json::Value>(text)?["format"]
         .as_u64()
         .and_then(|f| u32::try_from(f).ok())
-        .unwrap_or(0);
+        .unwrap_or(0))
+}
+
+/// A ride's metadata from the text of its file.
+fn metadata_from_json(text: &str) -> Result<RideRecord, RideError> {
+    let format = format_of(text)?;
     if format > FORMAT_VERSION {
         return Err(RideError::NewerFormat(format));
     }
@@ -554,9 +653,61 @@ mod tests {
         let fit = dir.join("orqwa-20260930-071500.fit");
 
         save(&fit, &record()).unwrap();
+        save_segments(&fit, &record().segments).unwrap();
 
         assert!(dir.join("orqwa-20260930-071500.json").exists());
+        assert!(dir.join("orqwa-20260930-071500.segments.json").exists());
         assert_eq!(load(&fit).unwrap(), record());
+        let indexed = from_json(&to_json(&record()).unwrap()).unwrap();
+        assert_eq!(indexed, record(), "the index keeps the times too");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn segment_times_outlast_an_orqwa_that_does_not_know_them() {
+        let dir = temp_dir("older");
+        let fit = dir.join("orqwa-20260930-071500.fit");
+        save(&fit, &record()).unwrap();
+        save_segments(&fit, &record().segments).unwrap();
+
+        // An older release renames the ride: it writes the metadata afresh from the fields it
+        // knows, none of them the times.
+        let metadata: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(metadata_path(&fit)).unwrap()).unwrap();
+        assert!(
+            metadata.get("segments").is_none(),
+            "nothing of them to lose there"
+        );
+        let older = RideRecord {
+            name: Some("Renamed elsewhere".to_owned()),
+            segments: Vec::new(),
+            ..record()
+        };
+        save(&fit, &older).unwrap();
+
+        let loaded = load(&fit).unwrap();
+        assert_eq!(loaded.name.as_deref(), Some("Renamed elsewhere"));
+        assert_eq!(loaded.segments, record().segments);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn no_segment_times_make_no_file_and_newer_ones_are_not_misread() {
+        let dir = temp_dir("segment-files");
+        let fit = dir.join("a.fit");
+        save(&fit, &record()).unwrap();
+        save_segments(&fit, &[]).unwrap();
+        assert!(!segments_path(&fit).exists());
+        assert_eq!(load(&fit).unwrap().segments, []);
+
+        std::fs::write(segments_path(&fit), r#"{"format": 99, "laps": []}"#).unwrap();
+        assert!(matches!(
+            load_segments(&fit),
+            Err(RideError::NewerFormat(99))
+        ));
+        let ride = load(&fit).unwrap();
+        assert_eq!(ride.segments, [], "the ride without them");
+        assert_eq!(ride.route, "Gurten");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

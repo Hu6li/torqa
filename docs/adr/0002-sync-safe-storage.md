@@ -83,3 +83,11 @@ the workout HUD. A file without the new field supplies its existing figures to b
 The first save snapshots those figures into the workout field before changing either layout,
 so editing the ride HUD cannot silently change a workout HUD that has never been edited.
 Both layouts are written together atomically and follow the rider through file syncing.
+
+## Amendment 2026-11-27: segment times beside the ride (R302)
+
+A ride that timed one of the rider's own segments has a third file, `<ride>.segments.json`,
+written once when the ride is saved and deleted with it. Releases that rewrite the metadata
+from the fields they know leave it alone. The history index knows it by its own size and
+modification time and builds itself afresh at layout 2. [ADR 0044](0044-segment-storage.md)
+has the format.

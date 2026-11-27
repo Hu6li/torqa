@@ -2,8 +2,8 @@
 //! platform's cache directory, so the history and the analysis across rides read one file
 //! instead of the JSON next to every FIT activity: hundreds of small files for a regular rider,
 //! which a sync client may fetch on demand (R30). The ride files stay the source of truth: the
-//! index knows each metadata file by its size and modification time, reads one again when that
-//! changed (a rename, an upload, a rebuild), forgets rides whose files are gone, and is built
+//! index knows each metadata file and segment times file by its size and modification time,
+//! reads a ride again when either changed (a rename, an upload, a rebuild, times synced in), forgets rides whose files are gone, and is built
 //! afresh when it is missing or from another version of ORQWA. What it has read in this
 //! session it keeps in memory, so a second look costs one `stat` per ride.
 
@@ -18,7 +18,8 @@ use crate::rides::{self, RideRecord};
 /// The index file's name, in the cache directory.
 pub const FILE: &str = "history.sqlite";
 /// The index's layout; an index of another layout is thrown away and built afresh.
-const SCHEMA: i64 = 1;
+/// Layout 2 added the segment times file's state, and the segment times to the record.
+const SCHEMA: i64 = 2;
 
 /// The index could not be read or written; the ride files are still there to read.
 #[derive(Debug, thiserror::Error)]
@@ -31,7 +32,7 @@ pub enum IndexError {
     Io(#[from] std::io::Error),
 }
 
-/// A metadata file as the index last read it.
+/// A file as the index last read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FileState {
     /// Modification time in nanoseconds since the epoch.
@@ -39,11 +40,28 @@ struct FileState {
     size: i64,
 }
 
+/// A ride's files as the index last read them: its metadata, and its segment times if it has
+/// any.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RideState {
+    metadata: FileState,
+    segments: Option<FileState>,
+}
+
+impl RideState {
+    fn of(fit: &Path) -> Option<Self> {
+        Some(Self {
+            metadata: file_state(&rides::metadata_path(fit))?,
+            segments: file_state(&rides::segments_path(fit)),
+        })
+    }
+}
+
 /// The rides' metadata, read once and kept.
 pub struct HistoryIndex {
     connection: Connection,
     /// What this session has read, by FIT file: a second look costs a `stat` per ride.
-    memory: HashMap<PathBuf, (FileState, RideRecord)>,
+    memory: HashMap<PathBuf, (RideState, RideRecord)>,
 }
 
 impl std::fmt::Debug for HistoryIndex {
@@ -77,7 +95,9 @@ impl HistoryIndex {
                 path TEXT PRIMARY KEY,
                 modified INTEGER NOT NULL,
                 size INTEGER NOT NULL,
-                record TEXT NOT NULL
+                record TEXT NOT NULL,
+                segments_modified INTEGER,
+                segments_size INTEGER
             )",
         )?;
         connection.pragma_update(None, "user_version", SCHEMA)?;
@@ -107,8 +127,7 @@ impl HistoryIndex {
         let mut records = Vec::with_capacity(fits.len());
         let mut changed = Vec::new();
         for fit in fits {
-            let metadata = rides::metadata_path(&fit);
-            if let Some(state) = file_state(&metadata) {
+            if let Some(state) = RideState::of(&fit) {
                 if let Some((known, record)) = self.memory.get(&fit)
                     && *known == state
                 {
@@ -124,7 +143,7 @@ impl HistoryIndex {
             let Some(record) = load(&fit) else {
                 continue;
             };
-            if let Some(state) = file_state(&metadata) {
+            if let Some(state) = RideState::of(&fit) {
                 self.memory.insert(fit.clone(), (state, record.clone()));
                 changed.push((fit.clone(), state, record.clone()));
             }
@@ -136,14 +155,21 @@ impl HistoryIndex {
         Ok(records)
     }
 
-    /// The record the index holds for `fit`, if its metadata file is still as indexed. A
+    /// The record the index holds for `fit`, if its files are still as indexed. A
     /// record this ORQWA cannot read (a newer format) counts as unknown.
-    fn stored(&self, fit: &Path, state: FileState) -> Result<Option<RideRecord>, IndexError> {
+    fn stored(&self, fit: &Path, state: RideState) -> Result<Option<RideRecord>, IndexError> {
         let text: Option<String> = self
             .connection
             .query_row(
-                "SELECT record FROM rides WHERE path = ?1 AND modified = ?2 AND size = ?3",
-                params![key(fit), state.modified, state.size],
+                "SELECT record FROM rides WHERE path = ?1 AND modified = ?2 AND size = ?3
+                    AND segments_modified IS ?4 AND segments_size IS ?5",
+                params![
+                    key(fit),
+                    state.metadata.modified,
+                    state.metadata.size,
+                    state.segments.map(|s| s.modified),
+                    state.segments.map(|s| s.size),
+                ],
                 |row| row.get(0),
             )
             .optional()?;
@@ -154,7 +180,7 @@ impl HistoryIndex {
     fn store(
         &mut self,
         dir: &Path,
-        changed: &[(PathBuf, FileState, RideRecord)],
+        changed: &[(PathBuf, RideState, RideRecord)],
         present: &HashSet<&Path>,
     ) -> Result<(), IndexError> {
         let transaction = self.connection.transaction()?;
@@ -163,10 +189,20 @@ impl HistoryIndex {
                 continue;
             };
             transaction.execute(
-                "INSERT INTO rides (path, modified, size, record) VALUES (?1, ?2, ?3, ?4)
+                "INSERT INTO rides (path, modified, size, record, segments_modified, segments_size)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT(path) DO UPDATE SET
-                    modified = excluded.modified, size = excluded.size, record = excluded.record",
-                params![key(fit), state.modified, state.size, text],
+                    modified = excluded.modified, size = excluded.size, record = excluded.record,
+                    segments_modified = excluded.segments_modified,
+                    segments_size = excluded.segments_size",
+                params![
+                    key(fit),
+                    state.metadata.modified,
+                    state.metadata.size,
+                    text,
+                    state.segments.map(|s| s.modified),
+                    state.segments.map(|s| s.size),
+                ],
             )?;
         }
         let mut prefix = key(dir);
@@ -355,6 +391,40 @@ mod tests {
             .query_row("SELECT count(*) FROM rides", [], |row| row.get(0))
             .unwrap();
         assert_eq!(rows, 1, "the gone ride left the index");
+    }
+
+    #[test]
+    fn segment_times_synced_in_after_the_metadata_are_read() {
+        let dir = temp_dir("segments");
+        let file = dir.join("cache").join(FILE);
+        let fit = ride(
+            &dir,
+            "orqwa-20260301-100000",
+            &record("Gurten", 1_700_000_000),
+        );
+        let reads = Cell::new(0);
+        let mut index = HistoryIndex::open(&file).unwrap();
+        let before = index.records(&dir.join("rides"), counting(&reads)).unwrap();
+        assert_eq!(before[0].1.segments, []);
+
+        let sprint = rides::SegmentTime {
+            name: "Sprint".to_owned(),
+            start: orqwa_domain::units::Meters(200.0),
+            end: orqwa_domain::units::Meters(500.0),
+            elapsed: Duration::from_secs(21),
+            avg_power: None,
+        };
+        rides::save_segments(&fit, std::slice::from_ref(&sprint)).unwrap();
+        let after = index.records(&dir.join("rides"), counting(&reads)).unwrap();
+        assert_eq!(reads.get(), 2, "read again for its times");
+        assert_eq!(after[0].1.segments, std::slice::from_ref(&sprint));
+
+        // Another session serves them from the index.
+        drop(index);
+        let mut index = HistoryIndex::open(&file).unwrap();
+        let later = index.records(&dir.join("rides"), counting(&reads)).unwrap();
+        assert_eq!(reads.get(), 2);
+        assert_eq!(later[0].1.segments, [sprint]);
     }
 
     #[test]

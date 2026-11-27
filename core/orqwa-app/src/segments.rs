@@ -432,6 +432,13 @@ mod tests {
         let history = app.history();
         assert_eq!(history[0].record.segments.len(), 1);
         assert_eq!(history[0].segment_records, [true]);
+        // Beside the ride, in their own file: a rename leaves them be, a delete takes them.
+        let fit = history[0].fit.clone();
+        let times = orqwa_storage::rides::segments_path(&fit);
+        assert!(times.exists(), "{}", times.display());
+        app.rename_ride(&fit, "Lunch spin").unwrap();
+        assert_eq!(app.history()[0].record.segments.len(), 1);
+        assert_eq!(app.segments()[0].best, time);
 
         // Renamed, it keeps its times; moved, it is a new stretch without any.
         let id = app.segments()[0].segment.id;
@@ -441,6 +448,55 @@ mod tests {
         app.change_segment(id, "Town sprint", Meters(60.0), Meters(250.0))
             .unwrap();
         assert_eq!(app.segments()[0].best, None);
+        app.delete_ride(&fit).unwrap();
+        assert!(!times.exists(), "deleted with the ride");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_rider_hears_when_a_saved_ride_lost_its_segment_times() {
+        use orqwa_devices::fake::FakeRider;
+        use orqwa_domain::units::{Percent, Rpm, Watts};
+        use orqwa_physics::DescentMode;
+
+        let (dir, mut app) = loaded("segments-unsaved");
+        app.add_segment("Sprint", Meters(50.0), Meters(250.0))
+            .unwrap();
+        app.connect_trainer(crate::TrainerChoice::Fake(FakeRider {
+            power: Watts(400.0),
+            cadence: Rpm(90.0),
+            heart: None,
+        }))
+        .unwrap();
+        app.start_ride(Percent(50.0), DescentMode::Coast, &GhostChoice::None)
+            .unwrap();
+        run_until(&mut app, |e| matches!(e, AppEvent::Connected(_)));
+        app.set_time_scale(20.0);
+        run_until(&mut app, |e| {
+            matches!(e, AppEvent::Moment(Moment::SegmentDone { .. }))
+        });
+        // Something in the way of the times file, where the ride will be saved.
+        let start = app.ride.as_ref().and_then(|active| active.started).unwrap();
+        let fit = app
+            .rides_dir()
+            .join(crate::paths::activity_file_name(start));
+        std::fs::create_dir_all(orqwa_storage::rides::segments_path(&fit)).unwrap();
+
+        let events = app.finish_ride();
+        assert!(
+            matches!(events.first(), Some(AppEvent::RideSaved(saved)) if *saved == fit),
+            "{events:?}"
+        );
+        assert!(
+            events.iter().any(|e| matches!(
+                e,
+                AppEvent::Error(Failure {
+                    kind: Kind::SaveSegmentTimes,
+                    ..
+                })
+            )),
+            "{events:?}"
+        );
         std::fs::remove_dir_all(dir).unwrap();
     }
 

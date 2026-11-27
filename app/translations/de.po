@@ -3577,6 +3577,9 @@ msgstr "%s  ·  %.1f km ab km %.1f"
 msgid "Could not save the segment."
 msgstr "Das Segment konnte nicht gespeichert werden."
 
+msgid "The ride is saved, but its segment times could not be saved to %s."
+msgstr "Die Fahrt ist gespeichert, ihre Segmentzeiten konnten aber nicht unter %s gespeichert werden."
+
 msgid "%s does not follow this course."
 msgstr "%s folgt dieser Strecke nicht."
 

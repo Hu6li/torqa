@@ -3875,6 +3875,10 @@ msgstr ""
 msgid "The ride has started. No more friends can be added."
 msgstr ""
 
+#: core/orqwa-app/src/failure.rs
+msgid "The ride is saved, but its segment times could not be saved to %s."
+msgstr ""
+
 #: app/ui/profile_form.gd
 msgid "The ride's summary counts your rides this week against it; 0 if you plan no number"
 msgstr ""
