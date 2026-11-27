@@ -89,5 +89,7 @@ Both layouts are written together atomically and follow the rider through file s
 A ride that timed one of the rider's own segments has a third file, `<ride>.segments.json`,
 written once when the ride is saved and deleted with it. Releases that rewrite the metadata
 from the fields they know leave it alone. The history index knows it by its own size and
-modification time and builds itself afresh at layout 2. [ADR 0044](0044-segment-storage.md)
-has the format.
+modification time and builds itself afresh at layout 2. The rider's segments are one file
+each, `profiles/<rider>/segments/<route>/<id>.json`, under an id no other computer picks, so
+changes on two computers come together as files. [ADR 0044](0044-segment-storage.md) has the
+formats.

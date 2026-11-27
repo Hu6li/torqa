@@ -3523,6 +3523,21 @@ msgstr "Bestzeit %s"
 msgid "Rename or move the segment"
 msgstr "Segment umbenennen oder verschieben"
 
+msgid "Check ends"
+msgstr "Enden prüfen"
+
+msgid "The course is prepared differently now."
+msgstr "Die Strecke ist jetzt anders aufbereitet."
+
+msgid "Not timed until checked."
+msgstr "Bis zur Prüfung wird keine Zeit gemessen."
+
+msgid "Check that the segment starts and ends where it did, then save."
+msgstr "Prüfe, ob das Segment noch dort beginnt und endet, wo es war, und speichere es dann."
+
+msgid "It is timed again, and its times so far still count."
+msgstr "Danach wird es wieder gemessen, und seine bisherigen Zeiten zählen weiter."
+
 msgid "Remove the segment; its times stay with the rides"
 msgstr "Segment entfernen; seine Zeiten bleiben bei den Fahrten"
 

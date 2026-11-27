@@ -367,6 +367,30 @@ impl Route {
         self.key.clone()
     }
 
+    /// A fingerprint of the route as prepared: unlike [`Route::key`], it changes when the
+    /// same track comes out differently (snapped to other map data, prepared by a newer ORQWA,
+    /// on other elevations), so places along the route kept by distance can be checked
+    /// against it. Centimetres are fine enough to see such a change and coarse enough that
+    /// floating-point rounding on another platform does not count as one.
+    #[must_use]
+    pub fn revision(&self) -> String {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for point in &self.points {
+            for (value, scale) in [
+                (point.lat, 1e7),
+                (point.lon, 1e7),
+                (point.elevation.0, 100.0),
+                (point.distance.0, 100.0),
+            ] {
+                for byte in (value * scale).round().to_le_bytes() {
+                    hash ^= u64::from(byte);
+                    hash = hash.wrapping_mul(0x0100_0000_01b3);
+                }
+            }
+        }
+        format!("{hash:016x}")
+    }
+
     /// Total length.
     #[must_use]
     pub fn length(&self) -> Meters {
@@ -840,6 +864,12 @@ mod tests {
         assert!(snapped.length().0 < plain.length().0 - 1.0);
         assert!(snapped.points().iter().all(|p| (p.lon - 7.0).abs() < 1e-6));
         assert_eq!(snapped.key(), plain.key());
+        // Places kept by distance along it no longer lie where they did.
+        assert_ne!(snapped.revision(), plain.revision());
+        let again = Route::from_gpx_with::<Terrain>(&xml, None, &map)
+            .await
+            .unwrap();
+        assert_eq!(again.revision(), snapped.revision());
     }
 
     /// The road the dense track rides north along 7°E, with `structure` on it (approach roads

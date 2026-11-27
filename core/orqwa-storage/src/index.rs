@@ -408,7 +408,9 @@ mod tests {
         assert_eq!(before[0].1.segments, []);
 
         let sprint = rides::SegmentTime {
+            id: "0f3a".to_owned(),
             name: "Sprint".to_owned(),
+            revision: "9e1c".to_owned(),
             start: orqwa_domain::units::Meters(200.0),
             end: orqwa_domain::units::Meters(500.0),
             elapsed: Duration::from_secs(21),

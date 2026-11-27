@@ -20,25 +20,6 @@ pub(super) struct Undo {
     after: Option<Point>,
 }
 
-fn revision(route: &Route) -> String {
-    // Centimetre precision ignores platform rounding, while detecting prepared-route changes.
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for point in route.points() {
-        for (value, scale) in [
-            (point.lat, 1e7),
-            (point.lon, 1e7),
-            (point.elevation.0, 100.0),
-            (point.distance.0, 100.0),
-        ] {
-            for byte in (value * scale).round().to_le_bytes() {
-                hash ^= u64::from(byte);
-                hash = hash.wrapping_mul(0x0100_0000_01b3);
-            }
-        }
-    }
-    format!("{hash:016x}")
-}
-
 impl App {
     fn read_continuation(&self, key: &str) -> Option<Point> {
         continuation::load(&self.data_dir, &self.profile.id, key)
@@ -59,7 +40,7 @@ impl App {
     pub fn continuation_point(&self) -> Option<Point> {
         let route = self.route.as_ref()?;
         let point = self.read_continuation(&route.key())?;
-        if point.revision != revision(route) || point.distance_m >= route.length().0 {
+        if point.revision != route.revision() || point.distance_m >= route.length().0 {
             if let Err(error) =
                 continuation::save(&self.data_dir, &self.profile.id, &route.key(), None)
             {
@@ -175,7 +156,7 @@ impl App {
         let route = active.ride.route().expect("solo course");
         let key = route.key();
         let after = (!finished).then(|| Point {
-            revision: revision(route),
+            revision: route.revision(),
             distance_m: active.ride.state().distance.0,
             length_m: route.length().0,
         });
@@ -305,7 +286,7 @@ mod tests {
         assert!(app.ride_start_position(true).is_none());
         let route = app.route.as_ref().unwrap();
         let point = Point {
-            revision: revision(route),
+            revision: route.revision(),
             distance_m: route.length().0 * 0.75,
             length_m: route.length().0,
         };
@@ -327,7 +308,7 @@ mod tests {
         assert_eq!(route.climbs().len(), 2);
         let distance = route.climbs()[0].start.0.midpoint(route.climbs()[0].end.0);
         let point = Point {
-            revision: revision(&route),
+            revision: route.revision(),
             distance_m: distance,
             length_m: route.length().0,
         };

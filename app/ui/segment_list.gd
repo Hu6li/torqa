@@ -3,9 +3,10 @@ extends VBoxContainer
 ## The rider's own segments of a course (R302) on its page: each with its length, where it
 ## starts and the rider's best time on it, renamed or moved with the pencil and removed with the
 ## bin. A new one is marked by its start and end, typed in, dragged across or clicked on the
-## profile, or taken
-## from a GPX track of the stretch (one exported from a segment on a cycling site, say). Times
-## stay with the rides: a segment removed and marked again at the same ends keeps its best.
+## profile, or taken from a GPX track of the stretch (one exported from a segment on a cycling
+## site, say). Times stay with the rides: a segment removed and marked again at the same ends
+## keeps its best. Once the course is prepared differently (ADR 0044), a segment asks the rider
+## to check its ends, and is not timed until they save it.
 
 ## The segments changed (`OrqwaApp.segments()`): the profile marks them again.
 signal changed(segments: Array)
@@ -31,8 +32,9 @@ var _end: SpinBox = SpinBox.new()
 var _save: Button = Button.new()
 var _file_dialog: FileDialog = FileDialog.new()
 var _refused: AcceptDialog = AcceptDialog.new()
-## The segment the form changes; -1 for a new one.
-var _editing: int = -1
+var _check_note: Label = Label.new()
+## The segment the form changes; empty for a new one.
+var _editing: String = ""
 ## The next click on the profile sets the end rather than the start.
 var _picks_end: bool = false
 ## The ends being marked, in metres: the fields round them to what they show, a hundredth of a
@@ -103,7 +105,7 @@ func _init() -> void:
 	add_child(_rows)
 	_actions.add_theme_constant_override("separation", 12)
 	var add: Button = UiTheme.chip_action(tr("Add segment"), "plus")
-	add.pressed.connect(func() -> void: _open_form(-1, "", 0.0, minf(1000.0, _length_m)))
+	add.pressed.connect(func() -> void: _open_form("", "", 0.0, minf(1000.0, _length_m)))
 	_actions.add_child(add)
 	var gpx: Button = UiTheme.chip_action(tr("From GPX…"), "plus")
 	gpx.tooltip_text = tr("A GPX track of the stretch, such as a segment exported elsewhere")
@@ -156,6 +158,19 @@ func _build_form() -> void:
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", UiTheme.MUTED)
 	_form.add_child(hint)
+	_check_note.text = (
+		"%s %s %s"
+		% [
+			tr("The course is prepared differently now."),
+			tr("Check that the segment starts and ends where it did, then save."),
+			tr("It is timed again, and its times so far still count."),
+		]
+	)
+	_check_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_check_note.add_theme_font_size_override("font_size", 13)
+	_check_note.add_theme_color_override("font_color", UiTheme.WARNING)
+	_check_note.hide()
+	_form.add_child(_check_note)
 	var buttons: HBoxContainer = HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 10)
 	_save.text = tr("Save")
@@ -206,11 +221,23 @@ func _row(segment: Dictionary) -> HBoxContainer:
 	figures.text = "  ·  ".join(parts)
 	figures.add_theme_color_override("font_color", UiTheme.MUTED)
 	row.add_child(figures)
-	var id: int = segment["id"]
-	var edit: Button = _icon_button("pencil", tr("Rename or move the segment"))
+	var id: String = segment["id"]
 	var segment_name: String = segment["name"]
 	var end: float = segment["end_m"]
-	edit.pressed.connect(func() -> void: _open_form(id, segment_name, start, end))
+	var confirmed: bool = segment.get("confirmed", true)
+	var open: Callable = func() -> void: _open_form(id, segment_name, start, end, not confirmed)
+	if not confirmed:
+		# The course came out differently: the ends may lie elsewhere until the rider checks them.
+		var check: Button = UiTheme.chip_action(tr("Check ends"), "pencil")
+		check.tooltip_text = (
+			"%s %s"
+			% [tr("The course is prepared differently now."), tr("Not timed until checked.")]
+		)
+		check.add_theme_color_override("font_color", UiTheme.WARNING)
+		check.pressed.connect(open)
+		row.add_child(check)
+	var edit: Button = _icon_button("pencil", tr("Rename or move the segment"))
+	edit.pressed.connect(open)
 	row.add_child(edit)
 	var remove: Button = _icon_button(
 		"bin", tr("Remove the segment; its times stay with the rides")
@@ -229,8 +256,11 @@ func _icon_button(icon: String, tooltip: String) -> Button:
 	return button
 
 
-func _open_form(id: int, segment_name: String, start_m: float, end_m: float) -> void:
+func _open_form(
+	id: String, segment_name: String, start_m: float, end_m: float, checking: bool = false
+) -> void:
 	_editing = id
+	_check_note.visible = checking
 	for spin: SpinBox in [_start, _end]:
 		spin.max_value = _from_meters(_length_m)
 		spin.suffix = "mi" if _imperial else "km"
@@ -248,7 +278,7 @@ func _close_form() -> void:
 	var was_open: bool = _form.visible
 	_form.hide()
 	_actions.show()
-	_editing = -1
+	_editing = ""
 	if was_open:
 		picking_changed.emit(false)
 
@@ -272,7 +302,7 @@ func _on_save() -> void:
 		_refresh()
 
 
-func _remove(id: int) -> void:
+func _remove(id: String) -> void:
 	if _orqwa.remove_segment(id):
 		_close_form()
 		_refresh()
@@ -294,7 +324,7 @@ func _on_file_selected(picked: String) -> void:
 	var found_name: String = found["name"]
 	var start: float = found["start_m"]
 	var end: float = found["end_m"]
-	_open_form(-1, found_name, start, end)
+	_open_form("", found_name, start, end)
 
 
 ## Shows the ends without taking the fields' rounding back.

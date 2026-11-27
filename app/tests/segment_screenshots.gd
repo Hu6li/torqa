@@ -20,7 +20,7 @@ static func capture(main: Control, out: String) -> void:
 ## removed again so the rides after it show none.
 static func course_detail(main: Control, page: CourseDetail, out: String) -> void:
 	var app: OrqwaApp = main.get_node("Orqwa")
-	if not app.save_segment(-1, "Wabern sprint", 400.0, 1000.0):
+	if not app.save_segment("", "Wabern sprint", 400.0, 1000.0):
 		push_error("SCREENSHOTS FAILED: a segment marked")
 	page.refresh_records()
 	await main.get_tree().create_timer(0.5).timeout
@@ -42,8 +42,8 @@ static func _course_page(main: Control, out: String) -> void:
 		await tree.process_frame
 	var length: float = course["length_m"]
 	_forget_segments(app)
-	app.save_segment(-1, "Twann sprint", 1200.0, 2400.0)
-	app.save_segment(-1, "Chasseral finale", length - 2500.0, length)
+	app.save_segment("", "Twann sprint", 1200.0, 2400.0)
+	app.save_segment("", "Chasseral finale", length - 2500.0, length)
 	var page: CourseDetail = start.get("_detail")
 	for locale: String in ["en", "de"]:
 		TranslationServer.set_locale(locale)
@@ -101,7 +101,7 @@ static func _rides(main: Control, out: String) -> void:
 	while not world.chunks_uploaded():
 		await tree.process_frame
 	_forget_segments(app)
-	app.save_segment(-1, "Birdcage Walk sprint", SPRINT_START_M, SPRINT_END_M)
+	app.save_segment("", "Birdcage Walk sprint", SPRINT_START_M, SPRINT_END_M)
 	for ride: int in [1, 2]:
 		# The second ride goes harder, so it beats the first.
 		app.connect_fake_trainer(240.0 if ride == 1 else 330.0, 90.0)
@@ -195,7 +195,7 @@ static func _set_units(app: OrqwaApp, units: String) -> void:
 
 static func _forget_segments(app: OrqwaApp) -> void:
 	for segment: Dictionary in app.segments():
-		var id: int = segment["id"]
+		var id: String = segment["id"]
 		app.remove_segment(id)
 
 

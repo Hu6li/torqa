@@ -819,8 +819,16 @@ msgstr ""
 msgid "Chase"
 msgstr ""
 
+#: app/ui/segment_list.gd
+msgid "Check ends"
+msgstr ""
+
 #: app/ui/about_page.gd
 msgid "Check for updates"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Check that the segment starts and ends where it did, then save."
 msgstr ""
 
 #: app/scenes/courses_tab.gd
@@ -2155,6 +2163,10 @@ msgstr ""
 msgid "Is back in the group after {away}."
 msgstr ""
 
+#: app/ui/segment_list.gd
+msgid "It is timed again, and its times so far still count."
+msgstr ""
+
 #: app/ui/update_dialog.gd
 msgid "It is under Security & privacy; then check for updates again."
 msgstr ""
@@ -2713,6 +2725,10 @@ msgstr ""
 
 #: app/ui/profile_form.gd
 msgid "Not set"
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "Not timed until checked."
 msgstr ""
 
 #: app/scenes/button_dialog.gd
@@ -3825,6 +3841,10 @@ msgstr ""
 
 #: core/orqwa-app/src/failure.rs
 msgid "The course is not ready yet."
+msgstr ""
+
+#: app/ui/segment_list.gd
+msgid "The course is prepared differently now."
 msgstr ""
 
 #: app/scenes/devices_tab.gd

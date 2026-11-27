@@ -14,6 +14,8 @@ use orqwa_domain::recording::{Histogram, PowerCurve, RideAnalysis, RideSummary};
 use orqwa_domain::units::{BeatsPerMinute, Joules, Kilograms, Meters, MetersPerSecond, Rpm, Watts};
 use serde::{Deserialize, Serialize};
 
+use crate::segments::SegmentKey;
+
 /// The metadata format written by this version; newer files are treated as missing and rebuilt
 /// from the FIT file rather than misread.
 /// Version 2 added the route key, route time and climb times; version 1 files read without them.
@@ -117,8 +119,12 @@ impl ClimbTime {
 /// The time on one of the rider's segments of a ride (R302).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SegmentTime {
+    /// The segment's id ([`crate::segments::Segment::id`]).
+    pub id: String,
     /// The segment's name when it was ridden.
     pub name: String,
+    /// The revision of the prepared route ridden (`orqwa_routes::Route::revision`).
+    pub revision: String,
     /// Its start, from the route start.
     pub start: Meters,
     /// Its end, from the route start.
@@ -130,19 +136,21 @@ pub struct SegmentTime {
 }
 
 impl SegmentTime {
-    /// Whether `other` is a time on the same stretch: the rider set both ends, so they match
-    /// to the metre, whatever the segment is called now. A segment moved is a new one.
+    /// The stretch it was ridden on: times with the same key compare, whatever the segment is
+    /// called now.
     #[must_use]
-    pub fn same_segment(&self, other: &SegmentTime) -> bool {
-        const TOLERANCE_M: f64 = 1.0;
-        (self.start.0 - other.start.0).abs() < TOLERANCE_M
-            && (self.end.0 - other.end.0).abs() < TOLERANCE_M
+    pub fn key(&self) -> SegmentKey {
+        SegmentKey::new(&self.revision, self.start.0, self.end.0)
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SegmentFile {
+    #[serde(default)]
+    id: String,
     name: String,
+    #[serde(default)]
+    revision: String,
     start_m: f64,
     end_m: f64,
     time_s: f64,
@@ -218,7 +226,9 @@ struct IndexedRide {
 impl From<&SegmentTime> for SegmentFile {
     fn from(s: &SegmentTime) -> Self {
         Self {
+            id: s.id.clone(),
             name: s.name.clone(),
+            revision: s.revision.clone(),
             start_m: s.start.0,
             end_m: s.end.0,
             time_s: s.elapsed.as_secs_f64(),
@@ -230,7 +240,9 @@ impl From<&SegmentTime> for SegmentFile {
 impl From<SegmentFile> for SegmentTime {
     fn from(s: SegmentFile) -> Self {
         Self {
+            id: s.id,
             name: s.name,
+            revision: s.revision,
             start: Meters(s.start_m),
             end: Meters(s.end_m),
             elapsed: Duration::from_secs_f64(s.time_s.max(0.0)),
@@ -617,7 +629,9 @@ mod tests {
                 avg_power: Some(Watts(260.0)),
             }],
             segments: vec![SegmentTime {
+                id: "0f3a".to_owned(),
                 name: "Wabern sprint".to_owned(),
+                revision: "9e1c".to_owned(),
                 start: Meters(200.0),
                 end: Meters(500.0),
                 elapsed: Duration::from_secs(21),
@@ -782,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    fn a_segment_is_the_same_by_its_ends_not_its_name() {
+    fn a_segment_time_compares_by_its_route_revision_and_ends_not_its_name() {
         let sprint = record().segments[0].clone();
         let renamed = SegmentTime {
             name: "Village sprint".to_owned(),
@@ -793,8 +807,17 @@ mod tests {
             ..sprint.clone()
         };
 
-        assert!(sprint.same_segment(&renamed));
-        assert!(!sprint.same_segment(&moved));
+        assert_eq!(sprint.key(), renamed.key());
+        assert_ne!(sprint.key(), moved.key());
+        let rebuilt = SegmentTime {
+            revision: "77aa".to_owned(),
+            ..sprint.clone()
+        };
+        assert_ne!(
+            sprint.key(),
+            rebuilt.key(),
+            "the course prepared differently"
+        );
     }
 
     #[test]

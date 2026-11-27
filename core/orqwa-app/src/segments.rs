@@ -2,6 +2,7 @@
 //! that they mark on the course or bring as a GPX track. Like a climb, a segment is timed on
 //! each ride that covers all of it, and its best time is the one to beat.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use orqwa_domain::units::Meters;
 use orqwa_routes::Route;
 use orqwa_session::analysis::{effort, time_at};
 use orqwa_storage::rides::{RideRecord, SegmentTime};
-use orqwa_storage::segments::{self, Segment};
+use orqwa_storage::segments::{self, Placement, Segment, SegmentKey};
 
 use crate::failure::{Failure, Kind};
 use crate::moments::Moment;
@@ -31,6 +32,10 @@ pub struct SegmentBest {
     pub segment: Segment,
     /// The rider's fastest time on it, if they have ridden it.
     pub best: Option<Duration>,
+    /// Its ends were set or checked on the course as it is prepared now. One that is not, as
+    /// when a newer ORQWA prepares the course differently, may lie elsewhere along it: it is
+    /// not timed until the rider checks its ends.
+    pub confirmed: bool,
 }
 
 /// The segment the rider is on or coming up to.
@@ -58,7 +63,9 @@ fn in_ride(segment: &Segment, entry: Meters) -> (Meters, Meters) {
 
 fn probe(segment: &Segment) -> SegmentTime {
     SegmentTime {
+        id: segment.id.clone(),
         name: segment.name.clone(),
+        revision: segment.revision.clone(),
         start: Meters(segment.start_m),
         end: Meters(segment.end_m),
         elapsed: Duration::ZERO,
@@ -66,25 +73,47 @@ fn probe(segment: &Segment) -> SegmentTime {
     }
 }
 
-/// The fastest time on `segment` among `records`, which are on its route; simulated and
-/// assisted rides keep their times but set no records.
-pub(crate) fn best_time(records: &[&RideRecord], segment: &SegmentTime) -> Option<Duration> {
-    records
-        .iter()
+/// The fastest time on each stretch among `records`, in one pass: by its key, each of the
+/// keys a segment of `definitions` lay on sharing the best of them all. Simulated and assisted
+/// rides keep their times but set no records.
+pub(crate) fn best_by_key<'a>(
+    records: impl IntoIterator<Item = &'a RideRecord>,
+    definitions: &[Segment],
+) -> HashMap<SegmentKey, Duration> {
+    let mut best: HashMap<SegmentKey, Duration> = HashMap::new();
+    for time in records
+        .into_iter()
         .filter(|r| !r.assisted && !r.simulated)
         .flat_map(|r| r.segments.iter())
-        .filter(|other| other.same_segment(segment))
-        .map(|other| other.elapsed)
-        .min()
+    {
+        best.entry(time.key())
+            .and_modify(|b| *b = (*b).min(time.elapsed))
+            .or_insert(time.elapsed);
+    }
+    for segment in definitions {
+        let keys: Vec<SegmentKey> = segment.keys().collect();
+        if let Some(fastest) = keys.iter().filter_map(|k| best.get(k)).min().copied() {
+            for key in keys {
+                best.insert(key, fastest);
+            }
+        }
+    }
+    best
 }
 
-/// Each of `segments` with the rider's best time on it among `same_route`.
-pub(crate) fn bests(segments: Vec<Segment>, same_route: &[&RideRecord]) -> Vec<SegmentBest> {
+/// Each of `segments` with the rider's best time on it, from [`best_by_key`]; confirmed if its
+/// ends were set on the route's `revision` as prepared now.
+pub(crate) fn bests(
+    segments: Vec<Segment>,
+    revision: &str,
+    best: &HashMap<SegmentKey, Duration>,
+) -> Vec<SegmentBest> {
     segments
         .into_iter()
-        .map(|segment| {
-            let best = best_time(same_route, &probe(&segment));
-            SegmentBest { segment, best }
+        .map(|segment| SegmentBest {
+            best: best.get(&segment.key()).copied(),
+            confirmed: segment.revision == revision,
+            segment,
         })
         .collect()
 }
@@ -177,32 +206,49 @@ pub(crate) fn heralded(active: &mut ActiveRide) -> Vec<Moment> {
 }
 
 impl App {
-    pub(crate) fn stored_segments(&self, route: &Route) -> Vec<Segment> {
-        segments::load(&self.data_dir, &self.profile.id, &route.key())
+    /// The active rider's segments of the route with the key `route`.
+    pub(crate) fn stored_segments(&self, route: &str) -> Vec<Segment> {
+        segments::load(&self.data_dir, &self.profile.id, route)
             .inspect_err(|error| tracing::warn!(%error, "cannot read the course's segments"))
             .unwrap_or_default()
     }
 
-    /// The active rider's segments of the loaded course, in the order they were added, with
-    /// their best times.
-    #[must_use]
-    pub fn segments(&self) -> Vec<SegmentBest> {
-        self.route()
-            .map(|route| self.records_for(route).segments)
-            .unwrap_or_default()
+    /// The active rider's segments of `route` with their best times among `same_route`, the
+    /// rides on it; also those not to be timed until the rider checks their ends.
+    pub(crate) fn segment_bests(
+        &self,
+        route: &Route,
+        same_route: &[&RideRecord],
+    ) -> Vec<SegmentBest> {
+        let stored = self.stored_segments(&route.key());
+        let best = best_by_key(same_route.iter().copied(), &stored);
+        bests(stored, &route.revision(), &best)
     }
 
-    fn save_segments(&self, change: impl FnOnce(&mut Vec<Segment>)) -> Result<(), AppError> {
-        let route = self.route().ok_or(AppError::NoRoute)?;
-        let mut list = segments::load(&self.data_dir, &self.profile.id, &route.key())
-            .map_err(|e| Failure::new(Kind::SaveSegment, e))?;
-        change(&mut list);
+    /// The active rider's segments of the loaded course, in the order they were added, with
+    /// their best times; also those to check (see [`SegmentBest::confirmed`]).
+    #[must_use]
+    pub fn segments(&self) -> Vec<SegmentBest> {
+        let Some(route) = self.route() else {
+            return Vec::new();
+        };
+        let key = route.key();
+        let history = self.history();
+        let same_route: Vec<&RideRecord> = history
+            .iter()
+            .map(|entry| &entry.record)
+            .filter(|record| record.route_key.as_deref() == Some(key.as_str()))
+            .collect();
+        self.segment_bests(route, &same_route)
+    }
+
+    fn write_segment(&self, route: &Route, segment: &Segment) -> Result<(), AppError> {
         segments::save(
             &self.data_dir,
             &self.profile.id,
             &route.key(),
             route.length().0,
-            &list,
+            segment,
         )
         .map_err(|e| Failure::new(Kind::SaveSegment, e).into())
     }
@@ -213,47 +259,67 @@ impl App {
     /// # Errors
     /// No loaded route, a segment without a name, too short or off the course, or a
     /// file-system failure.
-    pub fn add_segment(&self, name: &str, start: Meters, end: Meters) -> Result<u32, AppError> {
-        let mut id = 0;
-        self.save_segments(|list| {
-            id = list.iter().map(|s| s.id).max().map_or(1, |max| max + 1);
-            list.push(Segment {
-                id,
-                name: name.trim().to_owned(),
-                start_m: start.0,
-                end_m: end.0,
-            });
-        })?;
-        Ok(id)
+    pub fn add_segment(&self, name: &str, start: Meters, end: Meters) -> Result<String, AppError> {
+        let route = self.route().ok_or(AppError::NoRoute)?;
+        let segment = Segment {
+            id: segments::new_id(),
+            name: name.trim().to_owned(),
+            start_m: start.0,
+            end_m: end.0,
+            revision: route.revision(),
+            earlier: Vec::new(),
+            added_ms: segments::now_ms(),
+        };
+        self.write_segment(route, &segment)?;
+        Ok(segment.id)
     }
 
     /// Renames or moves the segment `id` of the loaded course. Moved, it is a new stretch, and
-    /// its times start again.
+    /// its times start again. On a course prepared differently since its ends were set, this
+    /// is the rider checking them: it is timed again, and its times from before still count.
     ///
     /// # Errors
-    /// As [`App::add_segment`].
+    /// As [`App::add_segment`], or no such segment.
     pub fn change_segment(
         &self,
-        id: u32,
+        id: &str,
         name: &str,
         start: Meters,
         end: Meters,
     ) -> Result<(), AppError> {
-        self.save_segments(|list| {
-            if let Some(segment) = list.iter_mut().find(|s| s.id == id) {
-                name.trim().clone_into(&mut segment.name);
-                segment.start_m = start.0;
-                segment.end_m = end.0;
+        let route = self.route().ok_or(AppError::NoRoute)?;
+        let mut segment = self
+            .stored_segments(&route.key())
+            .into_iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| Failure::new(Kind::SaveSegment, "no such segment"))?;
+        let revision = route.revision();
+        if segment.revision != revision {
+            let before = Placement {
+                revision: std::mem::replace(&mut segment.revision, revision),
+                start_m: segment.start_m,
+                end_m: segment.end_m,
+            };
+            if !segment.earlier.contains(&before) {
+                segment.earlier.push(before);
             }
-        })
+        } else if segment.key() != SegmentKey::new(&revision, start.0, end.0) {
+            segment.earlier.clear();
+        }
+        name.trim().clone_into(&mut segment.name);
+        segment.start_m = start.0;
+        segment.end_m = end.0;
+        self.write_segment(route, &segment)
     }
 
     /// Removes the segment `id` of the loaded course; the times ridden on it stay with the rides.
     ///
     /// # Errors
     /// No loaded route or a file-system failure.
-    pub fn remove_segment(&self, id: u32) -> Result<(), AppError> {
-        self.save_segments(|list| list.retain(|s| s.id != id))
+    pub fn remove_segment(&self, id: &str) -> Result<(), AppError> {
+        let route = self.route().ok_or(AppError::NoRoute)?;
+        segments::remove(&self.data_dir, &self.profile.id, &route.key(), id)
+            .map_err(|e| Failure::new(Kind::SaveSegment, e).into())
     }
 
     /// Where the track of the GPX file at `path` lies on the loaded course, with the file's name
@@ -364,11 +430,11 @@ mod tests {
         let names: Vec<String> = app.segments().into_iter().map(|s| s.segment.name).collect();
         assert_eq!(names, ["Village sprint", "The hill"]);
 
-        app.change_segment(climb, "Hill", Meters(300.0), Meters(850.0))
+        app.change_segment(&climb, "Hill", Meters(300.0), Meters(850.0))
             .unwrap();
         assert_eq!(app.segments()[1].segment.name, "Hill");
         assert_eq!(app.segments()[1].segment.end_m, 850.0);
-        app.remove_segment(sprint).unwrap();
+        app.remove_segment(&sprint).unwrap();
         assert_eq!(app.segments().len(), 1);
 
         // Nothing unnamed, too short, backwards or beyond the course is kept.
@@ -441,15 +507,100 @@ mod tests {
         assert_eq!(app.segments()[0].best, time);
 
         // Renamed, it keeps its times; moved, it is a new stretch without any.
-        let id = app.segments()[0].segment.id;
-        app.change_segment(id, "Town sprint", Meters(50.0), Meters(250.0))
+        let id = app.segments()[0].segment.id.clone();
+        app.change_segment(&id, "Town sprint", Meters(50.0), Meters(250.0))
             .unwrap();
         assert_eq!(app.segments()[0].best, time);
-        app.change_segment(id, "Town sprint", Meters(60.0), Meters(250.0))
+        app.change_segment(&id, "Town sprint", Meters(60.0), Meters(250.0))
             .unwrap();
         assert_eq!(app.segments()[0].best, None);
         app.delete_ride(&fit).unwrap();
         assert!(!times.exists(), "deleted with the ride");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_course_prepared_differently_asks_for_its_segments_ends_and_keeps_their_times() {
+        use std::fmt::Write as _;
+
+        let (dir, mut app) = loaded("segments-rebuilt");
+        let id = app
+            .add_segment("Sprint", Meters(50.0), Meters(250.0))
+            .unwrap();
+        ride_to_the_finish(&mut app, &GhostChoice::None);
+        let first = app.segments()[0].best;
+        assert!(first.is_some());
+        let (key, revision) = {
+            let route = app.route().unwrap();
+            (route.key(), route.revision())
+        };
+
+        // The same track on other elevations: the same course, prepared differently.
+        let mut xml = String::from("<gpx><trk><name>Hill</name><trkseg>");
+        for i in 0..=120 {
+            let lat = 46.0 + f64::from(i) * 10.0 / 111_195.0;
+            let ele = 520.0 + f64::from((i - 30).clamp(0, 60)) * 0.6;
+            write!(
+                xml,
+                r#"<trkpt lat="{lat}" lon="7"><ele>{ele}</ele></trkpt>"#
+            )
+            .unwrap();
+        }
+        xml.push_str("</trkseg></trk></gpx>");
+        let path = dir.join("hill-again.gpx");
+        std::fs::write(&path, xml).unwrap();
+        drop(app);
+        let mut app = App::new(dir.join("data"), dir.join("cache")).unwrap();
+        app.load_route(path, true);
+        run_until(&mut app, |e| matches!(e, AppEvent::RouteLoaded(_)));
+        assert_eq!(app.route().unwrap().key(), key);
+        assert_ne!(app.route().unwrap().revision(), revision);
+
+        // Its ends may lie elsewhere now: listed to check, not timed, its time kept.
+        let listed = &app.segments()[0];
+        assert!(!listed.confirmed);
+        assert_eq!(listed.best, first);
+        let unchecked = ride_to_the_finish(&mut app, &GhostChoice::None);
+        assert!(
+            !unchecked
+                .iter()
+                .any(|e| matches!(e, AppEvent::Moment(Moment::SegmentDone { .. }))),
+            "{unchecked:?}"
+        );
+        let history = app.history();
+        assert_eq!(history[0].record.segments, []);
+        assert_eq!(
+            history[1].segment_records,
+            [true],
+            "the old time stays a record"
+        );
+
+        // Checked, it is timed again, and the time from before still counts.
+        app.change_segment(&id, "Sprint", Meters(50.0), Meters(250.0))
+            .unwrap();
+        assert!(app.segments()[0].confirmed);
+        assert_eq!(app.segments()[0].best, first);
+        let checked = ride_to_the_finish(&mut app, &GhostChoice::None);
+        assert!(
+            checked
+                .iter()
+                .any(|e| matches!(e, AppEvent::Moment(Moment::SegmentDone { .. }))),
+            "{checked:?}"
+        );
+        let both = app.segments()[0].best;
+        let history = app.history();
+        assert_eq!(
+            both,
+            history[0].record.segments[0]
+                .elapsed
+                .min(first.unwrap())
+                .into()
+        );
+
+        // Moved on the course as it is, it is another stretch.
+        app.change_segment(&id, "Sprint", Meters(60.0), Meters(250.0))
+            .unwrap();
+        assert_eq!(app.segments()[0].best, None);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

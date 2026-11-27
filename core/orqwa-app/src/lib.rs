@@ -4021,6 +4021,14 @@ impl App {
         let records = self.ride_records();
         let all: Vec<&RideRecord> = records.iter().map(|(_, r)| r).collect();
         let power_bests = analysis::record_powers(all.iter().copied());
+        let definitions: Vec<orqwa_storage::segments::Segment> = all
+            .iter()
+            .filter_map(|r| r.route_key.as_deref())
+            .collect::<std::collections::BTreeSet<&str>>()
+            .into_iter()
+            .flat_map(|key| self.stored_segments(key))
+            .collect();
+        let segment_bests = segments::best_by_key(all.iter().copied(), &definitions);
         records
             .iter()
             .map(|(fit, record)| {
@@ -4052,11 +4060,10 @@ impl App {
                     segment_records: record
                         .segments
                         .iter()
-                        .map(|segment| {
+                        .map(|time| {
                             !record.assisted
                                 && !record.simulated
-                                && Some(segment.elapsed)
-                                    == segments::best_time(&same_route, segment)
+                                && segment_bests.get(&time.key()) == Some(&time.elapsed)
                         })
                         .collect(),
                     power_records: analysis::power_records(record, &power_bests),
@@ -4116,7 +4123,12 @@ impl App {
                     best_climb_time(&same_route, &probe)
                 })
                 .collect(),
-            segments: segments::bests(self.stored_segments(route), &same_route),
+            // A segment to check may lie elsewhere on the course as prepared now.
+            segments: self
+                .segment_bests(route, &same_route)
+                .into_iter()
+                .filter(|s| s.confirmed)
+                .collect(),
         }
     }
 

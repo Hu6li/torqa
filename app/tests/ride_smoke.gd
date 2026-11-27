@@ -90,7 +90,7 @@ func _run() -> void:
 	_check(not panel.visible, "and hides away from segments")
 	panel.free()
 	for sprint: Dictionary in _orqwa.segments():
-		var sprint_id: int = sprint["id"]
+		var sprint_id: String = sprint["id"]
 		_check(_orqwa.remove_segment(sprint_id), "segment removed")
 	_check(_orqwa.segments().is_empty(), "no segments left")
 	var distance_m: float = state.get("distance_m", 0.0)
@@ -464,7 +464,7 @@ func _segments() -> void:
 	root.add_child(list)
 	# Left by an interrupted run: the rider's data outlives it.
 	for left: Dictionary in _orqwa.segments():
-		var left_id: int = left["id"]
+		var left_id: String = left["id"]
 		_orqwa.remove_segment(left_id)
 	var marked: Array = []
 	list.changed.connect(func(segments: Array) -> void: marked.assign(segments))
@@ -489,7 +489,7 @@ func _segments() -> void:
 	save.pressed.emit()
 	var first: Dictionary = marked[0] if marked.size() == 1 else {}
 	var length: float = first.get("length_m", 0.0)
-	var id: int = first.get("id", 0)
+	var id: String = first.get("id", "")
 	_check(
 		not form.visible and is_equal_approx(length, 300.0), "the segment is listed: %s" % [marked]
 	)
@@ -509,6 +509,27 @@ func _segments() -> void:
 	)
 	list.set("_imperial", false)
 	_check(_orqwa.save_segment(id, "Smoke sprint", 0.0, 300.0), "renamed back")
+	# A course prepared differently since: the row asks to check the ends, the form says why.
+	var listed_now: Dictionary = _orqwa.segments()[0]
+	var to_check: Dictionary = listed_now.duplicate()
+	var set_here: bool = to_check.get("confirmed", false)
+	_check(set_here, "set on this course: %s" % [to_check])
+	to_check["confirmed"] = false
+	var row: HBoxContainer = list.call("_row", to_check)
+	var asks: Array[Button] = []
+	for child: Node in row.get_children():
+		if child is Button and (child as Button).text == "Check ends":
+			asks.append(child)
+	_check(asks.size() == 1, "the row asks to check its ends")
+	var note: Label = list.get("_check_note")
+	if asks.size() == 1:
+		asks[0].pressed.emit()
+	_check(form.visible and note.visible, "the form says why")
+	list.call("_close_form")
+	row.free()
+	add.pressed.emit()
+	_check(not note.visible, "no note for a new segment")
+	list.call("_close_form")
 	# The maps draw its stretch of road: due north from the start for 300 m.
 	var listed: Dictionary = _orqwa.segments()[0]
 	var stretch: PackedVector2Array = listed.get("track", PackedVector2Array())
@@ -518,7 +539,7 @@ func _segments() -> void:
 		and stretch[stretch.size() - 1].distance_to(Vector2(0.0, 300.0)) < 2.0
 	)
 	_check(ends_ok, "the stretch for the maps: %s" % stretch)
-	_check(not _orqwa.save_segment(-1, "Elsewhere", 300.0, 900.0), "not beyond the finish")
+	_check(not _orqwa.save_segment("", "Elsewhere", 300.0, 900.0), "not beyond the finish")
 	_check(not _failure.is_empty(), "the refusal is reported")
 	_failure = ""
 	_check(_orqwa.segments().size() == 1, "one segment: %s" % [_orqwa.segments()])

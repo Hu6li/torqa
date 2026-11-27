@@ -3687,8 +3687,10 @@ impl OrqwaApp {
     }
 
     /// The active rider's segments of the loaded course (R302), as added: `[{id, name, start_m,
-    /// end_m, length_m, best_s, track}]`; `best_s` is `null` before a ride on it, and `track`
-    /// is its stretch of road on the grid of `track()`, for the maps.
+    /// end_m, length_m, best_s, confirmed, track}]`; `best_s` is `null` before a ride on it,
+    /// `confirmed` false once the course comes out differently, until the rider checks its ends
+    /// with `save_segment`, and `track` is its stretch of road on the grid of `track()`, for
+    /// the maps.
     #[func]
     fn segments(&self) -> VarArray {
         let mut array = VarArray::new();
@@ -3707,7 +3709,7 @@ impl OrqwaApp {
                     .collect();
             array.push(
                 &vdict! {
-                    "id" => i64::from(s.id),
+                    "id" => s.id.as_str(),
                     "name" => s.name.as_str(),
                     "start_m" => s.start_m,
                     "end_m" => s.end_m,
@@ -3715,6 +3717,7 @@ impl OrqwaApp {
                     "best_s" => &entry
                         .best
                         .map_or_else(Variant::nil, |b| b.as_secs_f64().to_variant()),
+                    "confirmed" => entry.confirmed,
                     "track" => &track,
                 }
                 .to_variant(),
@@ -3723,26 +3726,29 @@ impl OrqwaApp {
         array
     }
 
-    /// Adds a segment of the loaded course named `name` from `start_m` to `end_m`, or with
-    /// `id` 0 or more, changes that one instead; false with the failure reported.
+    /// Adds a segment of the loaded course named `name` from `start_m` to `end_m`, or with an
+    /// `id`, changes that one instead (which also confirms its ends); false with the failure
+    /// reported.
     #[func]
     #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
-    fn save_segment(&mut self, id: i64, name: GString, start_m: f64, end_m: f64) -> bool {
-        let name = name.to_string();
+    fn save_segment(&mut self, id: GString, name: GString, start_m: f64, end_m: f64) -> bool {
+        let (id, name) = (id.to_string(), name.to_string());
         let (start, end) = (Meters(start_m), Meters(end_m));
-        self.command(|app| match u32::try_from(id) {
-            Ok(id) => app.change_segment(id, &name, start, end),
-            Err(_) => app.add_segment(&name, start, end).map(|_| ()),
+        self.command(|app| {
+            if id.is_empty() {
+                app.add_segment(&name, start, end).map(|_| ())
+            } else {
+                app.change_segment(&id, &name, start, end)
+            }
         })
     }
 
     /// Removes the segment `id` of the loaded course; its times stay with the rides.
     #[func]
-    fn remove_segment(&mut self, id: i64) -> bool {
-        let Ok(id) = u32::try_from(id) else {
-            return false;
-        };
-        self.command(|app| app.remove_segment(id))
+    #[allow(clippy::needless_pass_by_value)] // #[func] parameters are passed by value from Godot
+    fn remove_segment(&mut self, id: GString) -> bool {
+        let id = id.to_string();
+        self.command(|app| app.remove_segment(&id))
     }
 
     /// Where the GPX track at `path` lies on the loaded course: `{name, start_m, end_m}`, a
