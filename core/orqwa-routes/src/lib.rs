@@ -294,7 +294,7 @@ impl Route {
         Ok(Self {
             key,
             name: gpx.name,
-            climbs: climbs::detect(&points),
+            climbs: climbs::detect_with_trimming(&points),
             points,
             elevation_source: source,
             cuts: Vec::new(),
@@ -310,7 +310,7 @@ impl Route {
     pub fn without_turns_in_place(mut self) -> Self {
         let cuts = turns::straighten(&mut self.points);
         if !cuts.is_empty() {
-            self.climbs = climbs::detect(&self.points);
+            self.climbs = climbs::detect_with_trimming(&self.points);
         }
         self.cuts.extend(cuts);
         self
