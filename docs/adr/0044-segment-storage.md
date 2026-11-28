@@ -95,8 +95,9 @@ Each segment is a file of its own, `profiles/<rider>/segments/<route>/<id>.json`
   points (positions, elevations and distances to the centimetre), unlike the route key, which
   comes from the GPX alone. A segment keeps the revision its ends were set or last checked on.
 - **Checked by the rider when the course comes out differently.** A segment whose revision is
-  not the course's is still listed, marked to be checked, but not timed or told. The rider
-  opens it, sees that its ends lie where they did (or moves them) and saves: it takes the new
+  not the course's is still listed, marked to be checked, but not timed or told, nor drawn on
+  the profiles and maps, where it may lie on another stretch now. The rider opens it, sees on
+  the profile that its ends lie where they did (or moves them) and saves: it takes the new
   revision, and its old placement goes into `earlier`, so its times so far keep counting.
   ORQWA cannot move the ends itself: whether the segment still starts at the same bend is the
   rider's call, and a guess would compare times on different roads without anyone noticing.

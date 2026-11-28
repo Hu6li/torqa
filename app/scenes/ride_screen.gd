@@ -165,7 +165,7 @@ func begin(options: Dictionary) -> void:
 	var climb_info: Dictionary = _orqwa.climbs()
 	var climbs: Array = climb_info.get("climbs", [])
 	_profile.set_climbs(climbs)
-	var segments: Array = _orqwa.segments()
+	var segments: Array = SegmentList.drawn(_orqwa.segments())
 	_profile.set_segments(segments)
 	_minimap.set_segments(segments)
 	_climb_panel.hide()

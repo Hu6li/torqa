@@ -8,7 +8,8 @@ extends VBoxContainer
 ## keeps its best. Once the course is prepared differently (ADR 0044), a segment asks the rider
 ## to check its ends, and is not timed until they save it.
 
-## The segments changed (`OrqwaApp.segments()`): the profile marks them again.
+## The segments to draw changed ([method drawn] of `OrqwaApp.segments()`): the profile and the
+## map mark them again.
 signal changed(segments: Array)
 ## While a segment is marked, clicks on the profile set its start, then its end ([method pick]).
 signal picking_changed(picking: bool)
@@ -185,14 +186,27 @@ func _build_form() -> void:
 	_form.hide()
 
 
+## Of `segments` (`OrqwaApp.segments()`), those the profiles and the maps draw: not those whose
+## ends the rider is to check (ADR 0044). They are not timed, and may lie elsewhere on the course
+## as prepared now. The stretch being checked shows on the profile while its form is open.
+static func drawn(segments: Array) -> Array:
+	return segments.filter(
+		func(segment: Dictionary) -> bool: return segment.get("confirmed", false)
+	)
+
+
 func _refresh() -> void:
+	_list(_orqwa.segments())
+
+
+## Lists every one of `segments`, those to check too; only those [method drawn] are marked.
+func _list(segments: Array) -> void:
 	for child: Node in _rows.get_children():
 		child.queue_free()
-	var segments: Array = _orqwa.segments()
 	for segment: Dictionary in segments:
 		_rows.add_child(_row(segment))
 	show()
-	changed.emit(segments)
+	changed.emit(drawn(segments))
 
 
 func _row(segment: Dictionary) -> HBoxContainer:

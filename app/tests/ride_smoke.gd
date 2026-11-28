@@ -530,6 +530,13 @@ func _segments() -> void:
 	add.pressed.emit()
 	_check(not note.visible, "no note for a new segment")
 	list.call("_close_form")
+	# Listed, but not drawn on the profile or the maps until checked: it would not be timed.
+	to_check["id"] = "tocheck"
+	list.call("_list", [listed_now, to_check])
+	var drawn_ids: Array = marked.map(func(s: Dictionary) -> String: return s["id"])
+	_check(drawn_ids == [id], "only the checked one is drawn: %s" % [drawn_ids])
+	_check(SegmentList.drawn([to_check]).is_empty(), "none drawn on the ride")
+	list.call("_refresh")
 	# The maps draw its stretch of road: due north from the start for 300 m.
 	var listed: Dictionary = _orqwa.segments()[0]
 	var stretch: PackedVector2Array = listed.get("track", PackedVector2Array())

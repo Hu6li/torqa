@@ -511,7 +511,7 @@ func _show_route() -> void:
 	_keep_preview()
 
 
-## The profile and the map mark the segments as listed.
+## The profile and the map mark the segments listed, but for those to check.
 func _on_segments_changed(segments: Array) -> void:
 	_profile.set_segments(segments)
 	var frame: Rect2 = _orqwa.course_position(0.0).get("frame", Rect2())
